@@ -18,29 +18,30 @@
         .gradient-header { background: linear-gradient(135deg, #1e1b4b 0%, #4f46e5 45%, #7c3aed 100%); position: relative; overflow: hidden; }
         .gradient-header::before { content: ''; position: absolute; top: -40%; right: -10%; width: 500px; height: 500px; background: radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 70%); border-radius: 50%; }
         .gradient-header::after { content: ''; position: absolute; bottom: -50%; left: -5%; width: 400px; height: 400px; background: radial-gradient(circle, rgba(168,85,247,0.15) 0%, transparent 70%); border-radius: 50%; }
-        .glass { background: rgba(255,255,255,0.85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.7); box-shadow: 0 8px 32px rgba(79,70,229,0.07); }
+        .glass { background: rgba(255,255,255,0.85); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.7); box-shadow: 0 8px 32px rgba(79,70,229,0.07); }
         .btn-primary { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); transition: all 0.25s ease; box-shadow: 0 4px 15px rgba(79,70,229,0.3); }
         .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(79,70,229,0.4); }
         .btn-primary:disabled { opacity: 0.5; transform: none; cursor: not-allowed; }
         .btn-secondary { background: #e2e8f0; transition: all 0.25s ease; }
         .btn-secondary:hover { background: #cbd5e1; }
-        .step-item { display: flex; align-items: flex-start; gap: 12px; padding: 8px 12px; border-radius: 12px; cursor: pointer; transition: all 0.2s ease; border: 1px solid transparent; }
+        .step-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; border-radius: 12px; cursor: pointer; transition: all 0.2s ease; border: 1px solid transparent; }
         .step-item:hover { background: #f1f5f9; }
         .step-item.active { background: #ede9fe; border-color: #c4b5fd; }
         .step-item.done .step-num { background: #10b981; color: white; }
         .step-item.done .step-label { color: #059669; }
         .step-item.running .step-num { background: #f59e0b; color: white; animation: pulse 1.5s infinite; }
         .step-item.locked { opacity: 0.4; cursor: not-allowed; }
+        .step-item.repeatable .step-num { background: #dbeafe; color: #1d4ed8; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
-        .step-num { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; background: #e2e8f0; color: #64748b; flex-shrink: 0; transition: all 0.3s ease; }
+        .step-num { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; background: #e2e8f0; color: #64748b; flex-shrink: 0; transition: all 0.3s ease; }
         .step-item.active .step-num { background: #7c3aed; color: white; }
         .step-label { font-size: 12px; font-weight: 500; color: #475569; line-height: 1.3; }
-        .step-desc { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+        .step-desc { font-size: 10px; color: #94a3b8; margin-top: 1px; }
         .editor-toolbar { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0; }
         .toolbar-btn { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 13px; cursor: pointer; transition: all 0.15s; background: white; border: 1px solid #e2e8f0; color: #475569; }
         .toolbar-btn:hover { background: #ede9fe; border-color: #c4b5fd; color: #7c3aed; }
         .toolbar-divider { width: 1px; background: #e2e8f0; margin: 4px 2px; }
-        .editor-area { min-height: 350px; max-height: 520px; overflow-y: auto; padding: 16px; font-size: 13px; line-height: 1.8; color: #1e293b; outline: none; transition: background 0.5s ease; }
+        .editor-area { min-height: 380px; max-height: 520px; overflow-y: auto; padding: 16px; font-size: 13px; line-height: 1.8; color: #1e293b; outline: none; transition: background 0.6s ease; }
         .editor-area:focus { box-shadow: inset 0 0 0 2px rgba(124,58,237,0.1); }
         .editor-area h1 { font-size: 20px; font-weight: 800; margin: 14px 0 6px; color: #1e1b4b; }
         .editor-area h2 { font-size: 17px; font-weight: 700; margin: 12px 0 5px; color: #1e1b4b; }
@@ -69,28 +70,26 @@
         .file-drop-zone { border: 2px dashed #cbd5e1; border-radius: 12px; padding: 16px; text-align: center; transition: all 0.2s ease; cursor: pointer; background: #fafbfc; }
         .file-drop-zone:hover { border-color: #7c3aed; background: #faf5ff; }
         .file-drop-zone.dragover { border-color: #7c3aed; background: #ede9fe; }
-        .file-chip { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: white; border: 1px solid #e2e8f0; font-size: 11px; transition: all 0.2s; }
-        .file-chip:hover { border-color: #c4b5fd; box-shadow: 0 2px 8px rgba(79,70,229,0.08); }
-        .file-chip .file-icon { font-size: 18px; flex-shrink: 0; }
-        .file-chip img { max-height: 36px; max-width: 60px; border-radius: 6px; object-fit: cover; }
-        .file-chip .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #334155; }
-        .file-chip .file-size { color: #94a3b8; font-size: 10px; }
-        .file-chip .remove-file { cursor: pointer; color: #94a3b8; font-size: 14px; padding: 2px 6px; border-radius: 6px; transition: all 0.15s; }
-        .file-chip .remove-file:hover { color: #ef4444; background: #fef2f2; }
-        .feedback-card-info { border-left: 3px solid #4f46e5; }
-        .feedback-card-edit { border-left: 3px solid #10b981; }
+        .attachment-card { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: white; border: 1px solid #e2e8f0; transition: all 0.2s; }
+        .attachment-card:hover { border-color: #c4b5fd; box-shadow: 0 4px 12px rgba(79,70,229,0.08); }
+        .attachment-preview { width: 48px; height: 48px; border-radius: 10px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; overflow: hidden; }
+        .attachment-preview img { width: 100%; height: 100%; object-fit: cover; border-radius: 10px; }
+        .attachment-info { flex: 1; min-width: 0; }
+        .attachment-name { font-size: 12px; font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .attachment-meta { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+        .attachment-type-badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 9px; font-weight: 600; background: #ede9fe; color: #6d28d9; margin-left: 6px; }
+        .attachment-remove { cursor: pointer; color: #94a3b8; font-size: 16px; padding: 4px 8px; border-radius: 6px; transition: all 0.15s; flex-shrink: 0; }
+        .attachment-remove:hover { color: #ef4444; background: #fef2f2; }
+        .feedback-card { border-left: 4px solid #4f46e5; }
+        .feedback-card.edit { border-left-color: #10b981; }
         select optgroup { font-weight: 700; color: #4f46e5; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; padding-top: 6px; }
         select option { font-weight: 400; color: #1e293b; font-size: 12px; padding: 6px; }
-        .model-select-wrap { position: relative; }
-        .model-select-wrap::after { content: '▾'; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #7c3aed; font-weight: 700; }
-        .model-select-wrap select { appearance: none; -webkit-appearance: none; padding-right: 32px; }
         .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 10px; color: white; font-size: 13px; font-weight: 600; z-index: 200; animation: fadeIn 0.3s ease-out; box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
         .toast-success { background: #10b981; }
         .toast-error { background: #ef4444; }
         .toast-info { background: #4f46e5; }
-        .step-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-size: 10px; font-weight: 600; }
-        .step-badge-info { background: #e0e7ff; color: #4338ca; }
-        .step-badge-edit { background: #d1fae5; color: #047857; }
+        .badge-info { background: #e0e7ff; color: #4338ca; padding: 2px 8px; border-radius: 9999px; font-size: 10px; font-weight: 600; }
+        .badge-edit { background: #d1fae5; color: #047857; padding: 2px 8px; border-radius: 9999px; font-size: 10px; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -142,15 +141,13 @@
 
             <!-- ЛЕВАЯ КОЛОНКА -->
             <div class="lg:col-span-8 space-y-3">
-                <!-- Статистика -->
                 <div class="grid grid-cols-4 gap-2 fade-in">
                     <div class="stat-card"><div class="stat-value" id="statChars">0</div><div class="stat-label">Символов</div></div>
                     <div class="stat-card"><div class="stat-value" id="statWords">0</div><div class="stat-label">Слов</div></div>
                     <div class="stat-card"><div class="stat-value" id="statSentences">0</div><div class="stat-label">Предложений</div></div>
-                    <div class="stat-card"><div class="stat-value" id="statSteps">0/14</div><div class="stat-label">Шагов</div></div>
+                    <div class="stat-card"><div class="stat-value" id="statSteps">0/15</div><div class="stat-label">Шагов</div></div>
                 </div>
 
-                <!-- Загрузка DOCX -->
                 <div class="glass rounded-2xl p-4 fade-in">
                     <div class="flex items-center justify-between mb-2">
                         <h2 class="text-xs font-bold text-gray-800">📄 Исходный документ</h2>
@@ -163,7 +160,6 @@
                     <div class="flex items-center gap-2 text-[10px] text-gray-400"><span id="fileName">Файл не загружен</span><span id="fileSize"></span></div>
                 </div>
 
-                <!-- Редактор -->
                 <div class="glass rounded-2xl overflow-hidden fade-in">
                     <div class="px-4 pt-3 pb-1 flex items-center justify-between">
                         <h2 class="text-xs font-bold text-gray-800">✏️ Редактор текста</h2>
@@ -171,33 +167,32 @@
                     </div>
                     <div class="px-4 pb-1">
                         <div class="editor-toolbar">
-                            <button class="toolbar-btn" onclick="formatDoc('bold')" title="Жирный"><b>B</b></button>
-                            <button class="toolbar-btn" onclick="formatDoc('italic')" title="Курсив"><i>I</i></button>
-                            <button class="toolbar-btn" onclick="formatDoc('underline')" title="Подчёркнутый"><u>U</u></button>
+                            <button class="toolbar-btn" onclick="formatDoc('bold')"><b>B</b></button>
+                            <button class="toolbar-btn" onclick="formatDoc('italic')"><i>I</i></button>
+                            <button class="toolbar-btn" onclick="formatDoc('underline')"><u>U</u></button>
                             <div class="toolbar-divider"></div>
-                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','h1')" title="Заголовок 1">H1</button>
-                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','h2')" title="Заголовок 2">H2</button>
-                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','h3')" title="Заголовок 3">H3</button>
-                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','p')" title="Обычный текст">¶</button>
+                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','h1')">H1</button>
+                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','h2')">H2</button>
+                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','h3')">H3</button>
+                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','p')">¶</button>
                             <div class="toolbar-divider"></div>
-                            <button class="toolbar-btn" onclick="formatDoc('insertUnorderedList')" title="Маркированный список">•</button>
-                            <button class="toolbar-btn" onclick="formatDoc('insertOrderedList')" title="Нумерованный список">1.</button>
-                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','blockquote')" title="Цитата">❝</button>
+                            <button class="toolbar-btn" onclick="formatDoc('insertUnorderedList')">•</button>
+                            <button class="toolbar-btn" onclick="formatDoc('insertOrderedList')">1.</button>
+                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','blockquote')">❝</button>
                             <div class="toolbar-divider"></div>
-                            <button class="toolbar-btn" onclick="formatDoc('undo')" title="Отменить">↶</button>
-                            <button class="toolbar-btn" onclick="formatDoc('redo')" title="Повторить">↷</button>
+                            <button class="toolbar-btn" onclick="formatDoc('undo')">↶</button>
+                            <button class="toolbar-btn" onclick="formatDoc('redo')">↷</button>
                         </div>
                     </div>
                     <div class="px-4 pb-4">
                         <div id="editor" class="editor-area" contenteditable="true" spellcheck="true" oninput="updateStats()">
                             <h1>Введение</h1>
-                            <p>Вставьте текст вашей выпускной квалификационной работы или загрузите <strong>.docx</strong> файл. Редактор поддерживает форматирование, списки, заголовки и цитаты.</p>
-                            <p>Выберите шаг пайплайна в правой колонке и нажмите <strong>«Применить шаг»</strong>. Шаги-правки обновят текст автоматически, информационные шаги покажут ответ в карточке обратной связи.</p>
+                            <p>Вставьте текст вашей выпускной квалификационной работы или загрузите <strong>.docx</strong> файл.</p>
                         </div>
                     </div>
                 </div>
 
-                <!-- Материалы и файлы (объединённый блок) -->
+                <!-- МАТЕРИАЛЫ РАБОТЫ -->
                 <div class="glass rounded-2xl p-4 fade-in">
                     <div class="flex items-center justify-between mb-3">
                         <h2 class="text-xs font-bold text-gray-800">📎 Материалы работы</h2>
@@ -205,75 +200,65 @@
                     </div>
 
                     <div class="file-drop-zone" id="dropZone" onclick="document.getElementById('attachmentInput').click()">
-                        <p class="text-[12px] text-gray-600 font-medium mb-1">📥 Перетащите файлы или нажмите для выбора</p>
-                        <p class="text-[10px] text-gray-400">Поддерживаются: изображения, .csv, .json, .txt, .xlsx</p>
+                        <p class="text-[12px] text-gray-600 font-medium mb-1">📥 Перетащите файлы сюда или нажмите для выбора</p>
+                        <p class="text-[10px] text-gray-400">Изображения, .csv, .json, .txt, .xlsx</p>
                     </div>
                     <input type="file" id="attachmentInput" class="hidden" multiple accept="image/*,.csv,.json,.txt,.xlsx,.xls" onchange="handleAttachmentUpload(event)">
 
                     <div id="attachmentsList" class="mt-3 space-y-2"></div>
-
-                    <div class="mt-4 pt-3 border-t border-gray-100">
-                        <p class="text-[10px] text-gray-500 mb-2">💡 Нейросеть учитывает эти материалы при работе над текстом: встраивает данные из таблиц, описывает графики, ссылается на изображения.</p>
-                        <button onclick="includeAttachmentsInPrompt()" class="btn-primary text-white text-[11px] font-semibold py-1.5 px-3 rounded-lg">✨ Учесть материалы в текущем шаге</button>
-                    </div>
                 </div>
 
-                <!-- Обратная связь -->
+                <!-- ОБРАТНАЯ СВЯЗЬ -->
                 <div class="glass rounded-2xl p-4 fade-in" id="feedbackCard" style="display:none;">
                     <div class="flex items-center justify-between mb-2">
                         <div class="flex items-center gap-2">
                             <h2 class="text-xs font-bold text-gray-800" id="feedbackTitle">📊 Обратная связь</h2>
-                            <span id="feedbackBadge" class="step-badge step-badge-info">Информация</span>
+                            <span id="feedbackBadge" class="badge-info">Информация</span>
                         </div>
                         <button onclick="document.getElementById('feedbackCard').style.display='none'" class="text-gray-400 hover:text-gray-600 text-lg">×</button>
                     </div>
                     <div id="feedbackContent" class="result-box whitespace-pre-wrap"></div>
-                    <div class="mt-2 flex gap-2">
+                    <div class="mt-2 flex gap-2" id="feedbackActions">
                         <button onclick="copyFeedback()" class="btn-secondary text-gray-600 text-[11px] font-semibold py-1.5 px-3 rounded-lg">📋 Копировать</button>
-                        <button onclick="insertFeedbackIntoEditor()" class="btn-secondary text-gray-600 text-[11px] font-semibold py-1.5 px-3 rounded-lg">↩ Вставить в текст</button>
                     </div>
                 </div>
             </div>
 
             <!-- ПРАВАЯ КОЛОНКА -->
             <div class="lg:col-span-4 space-y-3">
-                <!-- Пайплайн -->
                 <div class="glass rounded-2xl p-4 fade-in">
                     <div class="flex items-center justify-between mb-3">
                         <h2 class="text-xs font-bold text-gray-800">🗺️ Пайплайн</h2>
-                        <span class="text-[10px] text-gray-400" id="progressText">0 / 14</span>
+                        <span class="text-[10px] text-gray-400" id="progressText">0 / 15</span>
                     </div>
                     <div class="progress-bar mb-3"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
-                    <div class="space-y-0.5 max-h-[400px] overflow-y-auto" id="stepsList"></div>
+                    <div class="space-y-0.5 max-h-[420px] overflow-y-auto" id="stepsList"></div>
                 </div>
 
-                <!-- Действие -->
                 <div class="glass rounded-2xl p-4 fade-in">
                     <h2 class="text-xs font-bold text-gray-800 mb-3">⚡ Действие</h2>
                     <div class="mb-3">
                         <label class="block text-xs font-medium text-gray-600 mb-1.5">Модель</label>
-                        <div class="model-select-wrap">
-                            <select id="modelSelect" onchange="updateModelBadge()" class="w-full border border-gray-200 rounded-lg p-2.5 text-xs text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white cursor-pointer">
-                                <optgroup label="Универсальные">
-                                    <option value="yandexgpt-5-lite">Стандартная — YandexGPT 5 Lite</option>
-                                    <option value="yandexgpt-5-pro">Профессиональная — YandexGPT 5 Pro</option>
-                                    <option value="yandexgpt-5">Сбалансированная — YandexGPT 5</option>
-                                </optgroup>
-                                <optgroup label="Мощные">
-                                    <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast">Llama 3.3 70B — топовая</option>
-                                    <option value="zveno/nvidia/nemotron-3.5-lightning:free">Nemotron 3.5 — сверхбыстрая</option>
-                                    <option value="@cf/qwen/qwen3-30b-a3b-fp8">Qwen 3 30B — универсальная</option>
-                                </optgroup>
-                                <optgroup label="Логические">
-                                    <option value="@cf/deepseek-ai/deepseek-r1-distill-qwen-32b">DeepSeek R1 — рассуждения</option>
-                                    <option value="zveno/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free">Nemotron 3 Nano — анализ</option>
-                                </optgroup>
-                                <optgroup label="Быстрые">
-                                    <option value="@cf/google/gemma-3-12b-it">Gemma 3 12B — компактная</option>
-                                    <option value="zveno/cohere/north-mini-code:free">North Mini — текстовая</option>
-                                </optgroup>
-                            </select>
-                        </div>
+                        <select id="modelSelect" onchange="updateModelBadge()" class="w-full border border-gray-200 rounded-lg p-2.5 text-xs text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white cursor-pointer">
+                            <optgroup label="Универсальные">
+                                <option value="yandexgpt-5-lite">Стандартная — YandexGPT 5 Lite</option>
+                                <option value="yandexgpt-5-pro">Профессиональная — YandexGPT 5 Pro</option>
+                                <option value="yandexgpt-5">Сбалансированная — YandexGPT 5</option>
+                            </optgroup>
+                            <optgroup label="Мощные">
+                                <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast">Llama 3.3 70B — топовая</option>
+                                <option value="zveno/nvidia/nemotron-3.5-lightning:free">Nemotron 3.5 — сверхбыстрая</option>
+                                <option value="@cf/qwen/qwen3-30b-a3b-fp8">Qwen 3 30B — универсальная</option>
+                            </optgroup>
+                            <optgroup label="Логические">
+                                <option value="@cf/deepseek-ai/deepseek-r1-distill-qwen-32b">DeepSeek R1 — рассуждения</option>
+                                <option value="zveno/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free">Nemotron 3 Nano — анализ</option>
+                            </optgroup>
+                            <optgroup label="Быстрые">
+                                <option value="@cf/google/gemma-3-12b-it">Gemma 3 12B — компактная</option>
+                                <option value="zveno/cohere/north-mini-code:free">North Mini — текстовая</option>
+                            </optgroup>
+                        </select>
                     </div>
                     <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-2.5 mb-3">
                         <p class="text-[11px] text-indigo-700">Шаг: <strong id="selectedStepName">—</strong></p>
@@ -290,7 +275,6 @@
                     <button onclick="resetAll()" class="btn-secondary text-gray-600 font-semibold py-2 px-5 rounded-xl w-full text-[11px] mt-2">Сбросить всё</button>
                 </div>
 
-                <!-- О платформе -->
                 <div class="glass rounded-2xl p-4 fade-in">
                     <h2 class="text-xs font-bold text-gray-800 mb-2">ℹ️ О платформе</h2>
                     <div class="space-y-1.5 text-[11px] text-gray-500 leading-relaxed">
@@ -305,52 +289,53 @@
     </main>
 
     <script>
-        // === CONFIG ===
         const API_URL = 'https://d5d37c8mt9t2v19cbku9.g2n58e0c.apigw.yandexcloud.net';
 
-        // === PIPELINE STEPS (edit=true — правки в редактор, edit=false — в обратную связь) ===
         const STEPS = [
             { id: 0, label: 'Загрузка и профиль', desc: 'Анализ структуры, объёма, глав',
               prompt: 'Проанализируй структуру следующего текста ВКР: определи наличие введения, глав, заключения, оцени объём и готовность. Укажи явные пробелы.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
             { id: 1, label: 'Требования научрука', desc: 'Превращение замечаний в чек-лист',
               prompt: 'Преобразуй следующие требования и замечания в структурированный чек-лист с приоритетами и сроками.\n\nТребования:\n{text}',
+              fileUpload: true, edit: false, repeatable: true },
+            { id: 2, label: 'Материалы работы', desc: 'Учёт таблиц, изображений, данных',
+              prompt: 'Проанализируй прикреплённые материалы и текст работы. Вставь данные из таблиц в соответствующие места текста как markdown-таблицы, опиши изображения как рисунки с номерами и подписями, убедись, что данные не противоречат содержанию работы. Сначала напиши "КОММЕНТАРИЙ: <кратко что добавлено>", затем "ТЕКСТ:" и далее полный обновлённый текст.\n\nТекст:\n{text}',
+              fileUpload: false, edit: true, repeatable: true },
+            { id: 3, label: 'Валидация источников', desc: 'Проверка DOI, Crossref, OpenAlex',
+              prompt: 'Проверь следующие источники: укажи, какие выглядят валидными, какие сомнительными, какие могли быть выдуманы.\n\nСписок:\n{text}',
               fileUpload: true, edit: false },
-            { id: 2, label: 'Валидация источников', desc: 'Проверка DOI, Crossref, OpenAlex',
-              prompt: 'Проверь следующие источники: укажи, какие выглядят валидными, какие сомнительными, какие могли быть выдуманы. Объясни критерии.\n\nСписок:\n{text}',
-              fileUpload: true, edit: false },
-            { id: 3, label: 'Анализ источниковой базы', desc: 'Карта литературы, пробелы',
-              prompt: 'Проанализируй источниковую базу текста: выдели основных авторов, методы, противоречия, устаревшие блоки. Предложи, что добавить.\n\nТекст:\n{text}',
+            { id: 4, label: 'Анализ источниковой базы', desc: 'Карта литературы, пробелы',
+              prompt: 'Проанализируй источниковую базу текста: выдели основных авторов, методы, противоречия, устаревшие блоки.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
-            { id: 4, label: 'Доработка текста', desc: 'Усиление аргументации',
-              prompt: 'Улучши следующий текст: усиль аргументацию, убери неподтверждённые утверждения, перепиши слабые места в академическом стиле. Сначала кратко (2-3 предложения) объясни, что именно ты изменил и почему — начни ответ со строки "КОММЕНТАРИЙ:", затем с новой строки "ТЕКСТ:" и далее итоговый текст.\n\nТекст:\n{text}',
-              fileUpload: false, edit: true },
-            { id: 5, label: 'Подбор источников', desc: 'Новые релевантные работы',
-              prompt: 'Предложи 5-7 дополнительных научных источников по теме текста. Для каждого укажи автора, год, название, DOI (если есть) и поясни, зачем он нужен.\n\nТекст:\n{text}',
+            { id: 5, label: 'Доработка текста', desc: 'Усиление аргументации',
+              prompt: 'Улучши текст: усиль аргументацию, убери неподтверждённые утверждения. Сначала напиши "КОММЕНТАРИЙ: <что изменено и почему, 2-3 предложения>", затем "ТЕКСТ:" и далее полный итоговый текст.\n\nТекст:\n{text}',
+              fileUpload: false, edit: true, repeatable: true },
+            { id: 6, label: 'Подбор источников', desc: 'Новые релевантные работы',
+              prompt: 'Предложи 5-7 дополнительных научных источников по теме. Для каждого: автор, год, название, DOI, зачем нужен.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
-            { id: 6, label: 'Интеграция источников', desc: 'Встраивание в обзор и выводы',
-              prompt: 'На основе следующего текста интегрируй новые источники в обзор литературы, методы и выводы. Сначала кратко (2-3 предложения) объясни, что именно ты изменил — начни ответ со строки "КОММЕНТАРИЙ:", затем с новой строки "ТЕКСТ:" и далее итоговый текст.\n\nТекст:\n{text}',
-              fileUpload: false, edit: true },
-            { id: 7, label: 'Научная новизна', desc: 'Отличие от конкурентов',
-              prompt: 'Сформулируй черновик раздела о научной новизне: в чём отличие данной работы от существующих, какие пробелы она закрывает.\n\nТекст:\n{text}',
+            { id: 7, label: 'Интеграция источников', desc: 'Встраивание в обзор',
+              prompt: 'Интегрируй новые источники в обзор литературы и выводы. Сначала "КОММЕНТАРИЙ: <что добавлено>", затем "ТЕКСТ:" и полный итоговый текст.\n\nТекст:\n{text}',
+              fileUpload: false, edit: true, repeatable: true },
+            { id: 8, label: 'Научная новизна', desc: 'Отличие от конкурентов',
+              prompt: 'Сформулируй раздел о научной новизне: в чём отличие работы, какие пробелы закрывает.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
-            { id: 8, label: 'Язык и структура', desc: 'Логика, связность, стиль',
-              prompt: 'Проверь логику, связность и академический стиль текста. Сначала кратко (2-3 предложения) объясни, что именно ты изменил — начни ответ со строки "КОММЕНТАРИЙ:", затем с новой строки "ТЕКСТ:" и далее итоговый текст.\n\nТекст:\n{text}',
-              fileUpload: false, edit: true },
-            { id: 9, label: 'ГОСТ и требования', desc: 'Стили, поля, нумерация',
-              prompt: 'Проверь текст на соответствие ГОСТ 7.32-2017: оформление заголовков, нумерация, таблицы, рисунки, список литературы. Выдай список нарушений с рекомендациями.\n\nТекст:\n{text}',
+            { id: 9, label: 'Язык и структура', desc: 'Логика, связность, стиль',
+              prompt: 'Проверь логику, связность, стиль. Сначала "КОММЕНТАРИЙ: <что изменено>", затем "ТЕКСТ:" и полный итоговый текст.\n\nТекст:\n{text}',
+              fileUpload: false, edit: true, repeatable: true },
+            { id: 10, label: 'ГОСТ и требования', desc: 'Стили, поля, нумерация',
+              prompt: 'Проверь на соответствие ГОСТ 7.32-2017: заголовки, нумерация, таблицы, рисунки, список литературы. Выдай список нарушений.\n\nТекст:\n{text}',
+              fileUpload: false, edit: false, repeatable: true },
+            { id: 11, label: 'Авторство и AI-след', desc: 'Паспорт авторства',
+              prompt: 'Составь паспорт авторства: структура, ключевые тезисы, объём. Отметь фрагменты, которые могли быть сгенерированы AI.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
-            { id: 10, label: 'Авторство и AI-след', desc: 'Паспорт авторства',
-              prompt: 'Составь паспорт авторства для данного текста: зафиксируй структуру, ключевые тезисы, объём. Отметь, какие фрагменты могли быть сгенерированы AI.\n\nТекст:\n{text}',
+            { id: 12, label: 'Подготовка к защите', desc: 'Речь, слайды, вопросы',
+              prompt: 'Подготовь комплект для защиты: тезисы речи (2-3 минуты), структуру слайдов (8-10), вероятные вопросы и слабые места.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
-            { id: 11, label: 'Подготовка к защите', desc: 'Речь, слайды, вопросы',
-              prompt: 'Подготовь комплект для защиты: тезисы речи (2-3 минуты), структуру слайдов (8-10), вероятные вопросы комиссии и слабые места работы.\n\nТекст:\n{text}',
+            { id: 13, label: 'Публикация', desc: 'Журнал, cover letter',
+              prompt: 'Подбери журнал (ВАК/Scopus) для публикации по теме. Составь черновик cover letter, оцени риск отказа.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
-            { id: 12, label: 'Публикация', desc: 'Журнал, cover letter',
-              prompt: 'Подбери подходящий журнал (ВАК/Scopus) для публикации по теме текста. Составь черновик cover letter и оцени риск отказа.\n\nТекст:\n{text}',
-              fileUpload: false, edit: false },
-            { id: 13, label: 'Финальный пакет', desc: 'Готовая работа + отчёт',
-              prompt: 'Собери итоговый отчёт по работе: что сделано, какие шаги пройдены, какие результаты достигнуты, что осталось. Сформируй финальный чек-лист.\n\nТекст:\n{text}',
+            { id: 14, label: 'Финальный пакет', desc: 'Готовая работа + отчёт',
+              prompt: 'Собери итоговый отчёт: что сделано, какие шаги пройдены, какие результаты достигнуты. Сформируй финальный чек-лист.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
         ];
 
@@ -358,7 +343,7 @@
         let completedSteps = new Set();
         let runningStepId = null;
         let stepFileContent = '';
-        let attachments = []; // { id, type, name, size, data }
+        let attachments = [];
         let lastFeedbackText = '';
 
         // === ATTACHMENTS ===
@@ -374,16 +359,18 @@
                 const data = e.target.result;
                 let type = 'file';
                 let icon = '📄';
-                if (file.type.startsWith('image/')) { type = 'image'; icon = '🖼️'; }
-                else if (file.name.endsWith('.csv')) { type = 'csv'; icon = '📊'; }
-                else if (file.name.endsWith('.json')) { type = 'json'; icon = '📋'; }
-                else if (file.name.endsWith('.txt')) { type = 'txt'; icon = '📝'; }
-                else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) { type = 'xlsx'; icon = '📈'; }
+                let typeLabel = 'Файл';
+                if (file.type.startsWith('image/')) { type = 'image'; icon = '🖼️'; typeLabel = 'Изображение'; }
+                else if (file.name.endsWith('.csv')) { type = 'csv'; icon = '📊'; typeLabel = 'Таблица'; }
+                else if (file.name.endsWith('.json')) { type = 'json'; icon = '📋'; typeLabel = 'Данные'; }
+                else if (file.name.endsWith('.txt')) { type = 'txt'; icon = '📝'; typeLabel = 'Текст'; }
+                else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) { type = 'xlsx'; icon = '📈'; typeLabel = 'Таблица'; }
 
                 attachments.push({
                     id: Date.now() + Math.random(),
                     type: type,
                     icon: icon,
+                    typeLabel: typeLabel,
                     name: file.name,
                     size: file.size,
                     data: data
@@ -400,13 +387,15 @@
             container.innerHTML = attachments.map(att => {
                 const preview = att.type === 'image'
                     ? `<img src="${att.data}" alt="${att.name}">`
-                    : `<span class="file-icon">${att.icon}</span>`;
+                    : att.icon;
                 const size = (att.size / 1024).toFixed(1) + ' КБ';
-                return `<div class="file-chip">
-                    ${preview}
-                    <span class="file-name">${att.name}</span>
-                    <span class="file-size">${size}</span>
-                    <span class="remove-file" onclick="removeAttachment('${att.id}')">✕</span>
+                return `<div class="attachment-card">
+                    <div class="attachment-preview">${preview}</div>
+                    <div class="attachment-info">
+                        <div class="attachment-name">${att.name}<span class="attachment-type-badge">${att.typeLabel}</span></div>
+                        <div class="attachment-meta">${size}</div>
+                    </div>
+                    <span class="attachment-remove" onclick="removeAttachment('${att.id}')">✕</span>
                 </div>`;
             }).join('');
         }
@@ -416,15 +405,7 @@
             renderAttachments();
         }
 
-        function includeAttachmentsInPrompt() {
-            if (attachments.length === 0) {
-                showToast('Сначала прикрепите материалы', 'info');
-                return;
-            }
-            showToast(`Материалы (${attachments.length}) будут учтены при следующем шаге`, 'success');
-        }
-
-        // === DRAG & DROP ===
+        // Drag & Drop
         const dropZone = document.getElementById('dropZone');
         ['dragenter', 'dragover'].forEach(evt => {
             dropZone.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -450,27 +431,35 @@
             const list = document.getElementById('stepsList');
             const maxUnlocked = getMaxUnlockedStep();
             list.innerHTML = STEPS.map(s => {
-                const isLocked = s.id > maxUnlocked;
+                const isLocked = s.id > maxUnlocked && !s.repeatable;
                 const isDone = completedSteps.has(s.id);
                 const isActive = selectedStepId === s.id;
                 const isRunning = runningStepId === s.id;
                 let cls = 'step-item';
-                if (isDone) cls += ' done'; if (isActive) cls += ' active'; if (isRunning) cls += ' running'; if (isLocked) cls += ' locked';
+                if (isDone) cls += ' done';
+                if (isActive) cls += ' active';
+                if (isRunning) cls += ' running';
+                if (isLocked) cls += ' locked';
+                if (s.repeatable) cls += ' repeatable';
                 const editBadge = s.edit ? '✏️' : '💬';
-                return `<div class="${cls}" onclick="${isLocked ? '' : `selectStep(${s.id})`}"><div class="step-num">${isDone ? '✓' : (isRunning ? '...' : (isLocked ? '🔒' : s.id))}</div><div><div class="step-label">${editBadge} ${s.label}</div><div class="step-desc">${isLocked ? 'Завершите предыдущие шаги' : s.desc}</div></div></div>`;
+                const repeatBadge = s.repeatable ? '🔄' : '';
+                return `<div class="${cls}" onclick="${isLocked ? '' : `selectStep(${s.id})`}"><div class="step-num">${isDone ? '✓' : (isRunning ? '...' : (isLocked ? '🔒' : s.id))}</div><div><div class="step-label">${editBadge} ${s.label} ${repeatBadge}</div><div class="step-desc">${isLocked ? 'Завершите предыдущие шаги' : s.desc}</div></div></div>`;
             }).join('');
             updateProgress(); updateStats();
         }
 
-        function getMaxUnlockedStep() { for (let i = 0; i < STEPS.length; i++) if (!completedSteps.has(i)) return i; return STEPS.length - 1; }
+        function getMaxUnlockedStep() {
+            for (let i = 0; i < STEPS.length; i++) if (!completedSteps.has(i)) return i;
+            return STEPS.length - 1;
+        }
 
         function selectStep(id) {
-            if (id > getMaxUnlockedStep()) return;
-            selectedStepId = id;
             const step = STEPS.find(s => s.id === id);
+            if (id > getMaxUnlockedStep() && !step.repeatable) return;
+            selectedStepId = id;
             document.getElementById('selectedStepName').textContent = step.label;
             document.getElementById('selectedStepMode').textContent = step.edit
-                ? '✏️ Правки текста — будут применены автоматически'
+                ? '✏️ Правки текста — применяются автоматически'
                 : '💬 Анализ — результат появится в обратной связи';
             document.getElementById('applyBtn').disabled = false;
             document.getElementById('fileUploadForStep').style.display = step.fileUpload ? 'block' : 'none';
@@ -549,22 +538,22 @@
             return data.result.alternatives[0].message.text;
         }
 
-        // === ATTACHMENTS → PROMPT ===
+        // === ATTACHMENTS CONTEXT ===
         function buildAttachmentsContext() {
             if (attachments.length === 0) return '';
             let ctx = '\n\n=== ПРИКРЕПЛЁННЫЕ МАТЕРИАЛЫ ===\n';
             attachments.forEach((att, i) => {
-                ctx += `\n[Материал ${i + 1}: ${att.name} (${att.type})]\n`;
+                ctx += `\n[Материал ${i + 1}: ${att.name} — ${att.typeLabel}]\n`;
                 if (att.type === 'csv' || att.type === 'json' || att.type === 'txt') {
-                    const preview = String(att.data).substring(0, 2000);
-                    ctx += preview + (String(att.data).length > 2000 ? '\n...(сокращено)' : '') + '\n';
+                    const preview = String(att.data).substring(0, 2500);
+                    ctx += preview + (String(att.data).length > 2500 ? '\n...(сокращено)' : '') + '\n';
                 } else if (att.type === 'image') {
-                    ctx += '(Изображение загружено. Учти его при описании работы и вставь ссылку на соответствующий рисунок.)\n';
-                } else {
-                    ctx += '(Файл прикреплён — учти его содержимое.)\n';
+                    ctx += '(Изображение. Опиши его как рисунок с номером в нужном месте работы.)\n';
+                } else if (att.type === 'xlsx') {
+                    ctx += '(Табличные данные. Вставь как markdown-таблицу в нужное место.)\n';
                 }
             });
-            ctx += '\nУчитывай эти материалы при генерации текста. Если материал — таблица с данными, вставляй её как таблицу. Если изображение — описывай как рисунок и ссылайся на него по номеру. Убедись, что данные не противоречат содержанию работы.\n';
+            ctx += '\nОбязательно: таблицы вставляй как markdown-таблицы, изображения — как рисунки с подписями, данные должны соответствовать содержанию работы и не противоречить ему.\n';
             return ctx;
         }
 
@@ -580,47 +569,54 @@
             showLoading(`Шаг ${step.id}: ${step.label}...`);
             try {
                 let fullPrompt = step.prompt.replace('{text}', text);
-                if (attachments.length > 0) {
-                    fullPrompt += buildAttachmentsContext();
-                }
+                if (attachments.length > 0) fullPrompt += buildAttachmentsContext();
 
                 const result = await callLLM(fullPrompt);
 
-                // Парсим КОММЕНТАРИЙ и ТЕКСТ (для edit-шагов)
-                let comment = '';
-                let newText = result;
                 if (step.edit) {
-                    const commentMatch = result.match(/КОММЕНТАРИЙ[:\s]*([\s\S]*?)(?=ТЕКСТ[:\s]*|$)/i);
-                    const textMatch = result.match(/ТЕКСТ[:\s]*([\s\S]*)$/i);
-                    if (commentMatch) comment = commentMatch[1].trim();
-                    if (textMatch) newText = textMatch[1].trim();
-                    else newText = result;
-                }
+                    // Парсим ответ
+                    let comment = 'Текст обновлён.';
+                    let newText = result;
 
-                if (step.edit) {
-                    // Обновляем текст редактора с анимацией
+                    // Ищем блоки КОММЕНТАРИЙ и ТЕКСТ
+                    const commentRegex = /КОММЕНТАРИЙ\s*:\s*([\s\S]*?)(?=ТЕКСТ\s*:|$)/i;
+                    const textRegex = /ТЕКСТ\s*:\s*([\s\S]*)$/i;
+                    const cMatch = result.match(commentRegex);
+                    const tMatch = result.match(textRegex);
+
+                    if (cMatch && cMatch[1].trim()) comment = cMatch[1].trim();
+                    if (tMatch && tMatch[1].trim()) newText = tMatch[1].trim();
+
+                    // Если модель вернула чек-лист вместо текста — используем как есть
+                    if (newText.length < 50 && result.length > 100) {
+                        newText = result;
+                        comment = 'Модель вернула разбор. Проверьте текст.';
+                    }
+
                     const editor = document.getElementById('editor');
                     editor.innerHTML = newText.replace(/\n/g, '<br>');
                     editor.classList.add('flash-edit');
-                    setTimeout(() => editor.classList.remove('flash-edit'), 1200);
+                    setTimeout(() => editor.classList.remove('flash-edit'), 1500);
                     updateStats();
 
-                    // Показываем обратную связь с комментарием
+                    // Обратная связь с комментарием
                     document.getElementById('feedbackTitle').textContent = `✏️ Изменения: ${step.label}`;
                     document.getElementById('feedbackBadge').textContent = 'Правки применены';
-                    document.getElementById('feedbackBadge').className = 'step-badge step-badge-edit';
-                    document.getElementById('feedbackContent').textContent = comment || 'Текст обновлён. Изменения применены к текущему документу.';
+                    document.getElementById('feedbackBadge').className = 'badge-edit';
+                    document.getElementById('feedbackContent').textContent = comment;
+                    document.getElementById('feedbackCard').className = 'glass rounded-2xl p-4 fade-in feedback-card edit';
                     document.getElementById('feedbackCard').style.display = 'block';
-                    document.getElementById('feedbackCard').classList.add('fade-in');
+                    document.getElementById('feedbackActions').style.display = 'none';
                     showToast('Текст обновлён', 'success');
                 } else {
-                    // Просто показываем ответ
+                    // Только информация
                     document.getElementById('feedbackTitle').textContent = `📊 ${step.label}`;
                     document.getElementById('feedbackBadge').textContent = 'Информация';
-                    document.getElementById('feedbackBadge').className = 'step-badge step-badge-info';
+                    document.getElementById('feedbackBadge').className = 'badge-info';
                     document.getElementById('feedbackContent').textContent = result;
+                    document.getElementById('feedbackCard').className = 'glass rounded-2xl p-4 fade-in feedback-card';
                     document.getElementById('feedbackCard').style.display = 'block';
-                    document.getElementById('feedbackCard').classList.add('fade-in');
+                    document.getElementById('feedbackActions').style.display = 'flex';
                 }
 
                 lastFeedbackText = result;
@@ -633,13 +629,6 @@
         function copyFeedback() {
             if (!lastFeedbackText) return;
             navigator.clipboard.writeText(lastFeedbackText).then(() => showToast('Скопировано', 'success'));
-        }
-        function insertFeedbackIntoEditor() {
-            if (!lastFeedbackText) return;
-            const editor = document.getElementById('editor');
-            editor.innerHTML += '<hr style="border-color:#e2e8f0;margin:12px 0;"><div style="background:#f8fafc;padding:10px;border-radius:8px;font-size:12px;color:#475569;">' + lastFeedbackText.replace(/\n/g, '<br>') + '</div>';
-            updateStats();
-            showToast('Добавлено в текст', 'success');
         }
 
         // === TOAST ===
