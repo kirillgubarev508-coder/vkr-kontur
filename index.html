@@ -8,13 +8,14 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html-docx-js/0.3.1/html-docx.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         * { font-family: 'Inter', sans-serif; }
-        body { background: #f1f5f9; min-height: 100vh; overflow: hidden; }
+        body { background: #f1f5f9; min-height: 100vh; }
         .gradient-header {
             background: linear-gradient(135deg, #1e1b4b 0%, #4f46e5 45%, #7c3aed 100%);
             position: relative; overflow: hidden;
@@ -142,6 +143,29 @@
         }
         .file-upload-area:hover { border-color: #7c3aed; background: #faf5ff; }
         .file-upload-area.dragover { border-color: #7c3aed; background: #ede9fe; }
+        .tool-panel {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+        }
+        .tool-btn {
+            display: flex; flex-direction: column; align-items: center; gap: 4px;
+            padding: 10px; border-radius: 10px; background: #f8fafc;
+            border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.2s;
+            font-size: 11px; font-weight: 500; color: #475569;
+        }
+        .tool-btn:hover { background: #ede9fe; border-color: #c4b5fd; color: #7c3aed; }
+        .tool-icon { font-size: 18px; }
+        .chart-container { position: relative; height: 200px; width: 100%; }
+        .table-container { overflow-x: auto; margin: 10px 0; }
+        .dynamic-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .dynamic-table th, .dynamic-table td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; }
+        .dynamic-table th { background: #f1f5f9; font-weight: 600; }
+        .quick-action {
+            display: flex; align-items: center; gap: 6px;
+            padding: 8px 10px; border-radius: 8px; background: #f8fafc;
+            border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.2s;
+            font-size: 11px; font-weight: 500; color: #475569;
+        }
+        .quick-action:hover { background: #ede9fe; border-color: #c4b5fd; color: #7c3aed; }
     </style>
 </head>
 <body>
@@ -194,10 +218,10 @@
     <main class="max-w-7xl mx-auto px-3 py-4">
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
 
-            <!-- Left Column: Editor -->
+            <!-- Left Column: Editor & Tools -->
             <div class="lg:col-span-8 space-y-3">
                 <!-- Stats -->
-                <div class="grid grid-cols-3 gap-2 fade-in">
+                <div class="grid grid-cols-4 gap-2 fade-in">
                     <div class="stat-card">
                         <div class="stat-value" id="statChars">0</div>
                         <div class="stat-label">Символов</div>
@@ -205,6 +229,10 @@
                     <div class="stat-card">
                         <div class="stat-value" id="statWords">0</div>
                         <div class="stat-label">Слов</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statSentences">0</div>
+                        <div class="stat-label">Предложений</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-value" id="statSteps">0/14</div>
@@ -264,6 +292,56 @@
                     </div>
                 </div>
 
+                <!-- Tools Panel -->
+                <div class="glass rounded-2xl p-4 fade-in">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-xs font-bold text-gray-800">🧰 Инструменты</h2>
+                        <span class="text-[10px] text-gray-400">Визуализация и анализ</span>
+                    </div>
+                    <div class="tool-panel">
+                        <div class="tool-btn" onclick="insertChart()">
+                            <span class="tool-icon">📊</span>
+                            <span>График</span>
+                        </div>
+                        <div class="tool-btn" onclick="insertTable()">
+                            <span class="tool-icon">📋</span>
+                            <span>Таблица</span>
+                        </div>
+                        <div class="tool-btn" onclick="insertImage()">
+                            <span class="tool-icon">🖼️</span>
+                            <span>Изображение</span>
+                        </div>
+                        <div class="tool-btn" onclick="generateScheme()">
+                            <span class="tool-icon">🔗</span>
+                            <span>Схема</span>
+                        </div>
+                    </div>
+                    <div id="toolOutput" class="mt-3"></div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="glass rounded-2xl p-4 fade-in">
+                    <h2 class="text-xs font-bold text-gray-800 mb-2">⚡ Быстрые действия</h2>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="quick-action" onclick="analyzeText()">
+                            <span>🔍</span>
+                            <span>Анализ текста</span>
+                        </div>
+                        <div class="quick-action" onclick="findKeywords()">
+                            <span>🔑</span>
+                            <span>Ключевые слова</span>
+                        </div>
+                        <div class="quick-action" onclick="checkReadability()">
+                            <span>📖</span>
+                            <span>Читабельность</span>
+                        </div>
+                        <div class="quick-action" onclick="generateAbstract()">
+                            <span>📝</span>
+                            <span>Аннотация</span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Result Card -->
                 <div class="glass rounded-2xl p-4 fade-in" id="resultCard" style="display:none;">
                     <div class="flex items-center justify-between mb-2">
@@ -294,6 +372,17 @@
                 <!-- Action Card -->
                 <div class="glass rounded-2xl p-4 fade-in">
                     <h2 class="text-xs font-bold text-gray-800 mb-2">⚡ Действие</h2>
+                    <div class="mb-3">
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Модель:</label>
+                        <select id="modelSelect" class="w-full border border-gray-200 rounded-lg p-2 text-xs text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                            <option value="yandexgpt">YandexGPT 5 Lite (РФ)</option>
+                            <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast">Llama 3.3 70B (Cloudflare)</option>
+                            <option value="@cf/deepseek-ai/deepseek-r1-distill-qwen-32b">DeepSeek R1 (Cloudflare)</option>
+                            <option value="@cf/qwen/qwen3-30b-a3b-fp8">Qwen 3 30B (Cloudflare)</option>
+                            <option value="openrouter/deepseek/deepseek-r1:free">DeepSeek R1 (OpenRouter)</option>
+                            <option value="openrouter/meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B (OpenRouter)</option>
+                        </select>
+                    </div>
                     <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-2.5 mb-2">
                         <p class="text-[11px] text-indigo-700">Шаг: <strong id="selectedStepName">—</strong></p>
                     </div>
@@ -325,7 +414,10 @@
 
     <script>
         // === CONFIG ===
-        const API_URL = 'https://d5d37c8mt9t2v19cbku9.g2n58e0c.apigw.yandexcloud.net';
+        // URL вашего Cloudflare Worker или API Gateway
+        const API_URL = 'https://vkr-kontur-gateway.<ваш-субдомен>.workers.dev';
+        // Для локального тестирования без Cloudflare можно временно указать прямой URL YandexGPT
+        // const API_URL = 'https://functions.yandexcloud.net/<ID_вашей_функции>';
 
         // === PIPELINE STEPS ===
         const STEPS = [
@@ -351,7 +443,7 @@
         let runningStepId = null;
         let stepFileContent = '';
 
-        // === RENDER STEPS (с последовательным доступом) ===
+        // === RENDER STEPS ===
         function renderSteps() {
             const list = document.getElementById('stepsList');
             const maxUnlocked = getMaxUnlockedStep();
@@ -380,7 +472,6 @@
         }
 
         function getMaxUnlockedStep() {
-            // Первый незавершённый шаг + 1 (можно вернуться к любому предыдущему)
             for (let i = 0; i < STEPS.length; i++) {
                 if (!completedSteps.has(i)) return i;
             }
@@ -393,7 +484,6 @@
             const step = STEPS.find(s => s.id === id);
             document.getElementById('selectedStepName').textContent = step.label;
             document.getElementById('applyBtn').disabled = false;
-            // Показываем/скрываем загрузку файла
             const fileUploadDiv = document.getElementById('fileUploadForStep');
             if (step.fileUpload) {
                 fileUploadDiv.style.display = 'block';
@@ -422,8 +512,10 @@
             const text = document.getElementById('editor').innerText || '';
             const chars = text.length;
             const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+            const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0).length;
             document.getElementById('statChars').textContent = chars.toLocaleString('ru-RU');
             document.getElementById('statWords').textContent = words.toLocaleString('ru-RU');
+            document.getElementById('statSentences').textContent = sentences.toLocaleString('ru-RU');
             document.getElementById('statSteps').textContent = `${completedSteps.size}/${STEPS.length}`;
             document.getElementById('wordCount').textContent = chars + ' символов';
         }
@@ -470,10 +562,9 @@
             if (file.name.endsWith('.txt')) {
                 reader.readAsText(file);
             } else if (file.name.endsWith('.docx')) {
-                // Для .docx используем mammoth
                 file.arrayBuffer().then(ab => {
                     mammoth.convertToHtml({ arrayBuffer: ab }).then(result => {
-                        stepFileContent = result.value;
+                        stepFileContent = result.html || result.value;
                     });
                 });
             } else {
@@ -482,11 +573,13 @@
         }
 
         // === API CALL ===
-        async function callYandexGPT(prompt) {
+        async function callLLM(prompt) {
+            const selectedModel = document.getElementById('modelSelect').value;
             const response = await fetch(API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    model: selectedModel,
                     messages: [{ role: 'user', text: prompt }]
                 })
             });
@@ -496,6 +589,7 @@
             }
             const data = await response.json();
             if (data.error) throw new Error(data.error);
+            // Ожидаем формат: { result: { alternatives: [ { message: { text: "..." } } ] } }
             return data.result.alternatives[0].message.text;
         }
 
@@ -504,7 +598,6 @@
             if (selectedStepId === null) return;
             const step = STEPS.find(s => s.id === selectedStepId);
             let text = document.getElementById('editor').innerText.trim();
-            // Если для шага загружен файл, используем его содержимое
             if (step.fileUpload && stepFileContent) {
                 text = stepFileContent;
             }
@@ -515,7 +608,7 @@
             showLoading(`Шаг ${step.id}: ${step.label}...`);
             try {
                 const prompt = step.prompt.replace('{text}', text);
-                const result = await callYandexGPT(prompt);
+                const result = await callLLM(prompt);
                 lastResult = result;
                 document.getElementById('resultStepName').textContent = step.label;
                 document.getElementById('resultContent').textContent = result;
@@ -604,6 +697,185 @@
         }
         function hideLoading() {
             document.getElementById('loadingOverlay').classList.remove('active');
+        }
+
+        // === TOOLS ===
+        function insertChart() {
+            const output = document.getElementById('toolOutput');
+            output.innerHTML = `
+                <div class="chart-container">
+                    <canvas id="myChart"></canvas>
+                </div>
+                <button onclick="downloadChart()" class="btn-secondary text-gray-600 text-[11px] font-semibold py-1.5 px-3 rounded-lg mt-2">💾 Скачать график</button>
+            `;
+            const ctx = document.getElementById('myChart').getContext('2d');
+            window.myChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Введение', 'Глава 1', 'Глава 2', 'Глава 3', 'Заключение'],
+                    datasets: [{
+                        label: 'Объём (страницы)',
+                        data: [5, 15, 12, 10, 5],
+                        backgroundColor: ['#4f46e5', '#7c3aed', '#a855f7', '#c084fc', '#e9d5ff'],
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        function downloadChart() {
+            const canvas = document.getElementById('myChart');
+            const link = document.createElement('a');
+            link.download = 'chart.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        function insertTable() {
+            const output = document.getElementById('toolOutput');
+            output.innerHTML = `
+                <div class="table-container">
+                    <table class="dynamic-table" id="dynamicTable">
+                        <thead>
+                            <tr><th>Параметр</th><th>Значение</th><th>Ед. изм.</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Объём работы</td><td>80</td><td>стр.</td></tr>
+                            <tr><td>Количество источников</td><td>45</td><td>шт.</td></tr>
+                            <tr><td>Количество рисунков</td><td>12</td><td>шт.</td></tr>
+                            <tr><td>Количество таблиц</td><td>8</td><td>шт.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="flex gap-2 mt-2">
+                    <button onclick="addTableRow()" class="btn-secondary text-gray-600 text-[11px] font-semibold py-1.5 px-3 rounded-lg">➕ Добавить строку</button>
+                    <button onclick="exportTable()" class="btn-secondary text-gray-600 text-[11px] font-semibold py-1.5 px-3 rounded-lg">📋 Копировать</button>
+                </div>
+            `;
+        }
+
+        function addTableRow() {
+            const tbody = document.querySelector('#dynamicTable tbody');
+            const row = document.createElement('tr');
+            row.innerHTML = '<td>Новый параметр</td><td>0</td><td>—</td>';
+            tbody.appendChild(row);
+        }
+
+        function exportTable() {
+            const table = document.getElementById('dynamicTable');
+            const rows = table.querySelectorAll('tr');
+            let text = '';
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('th, td');
+                text += Array.from(cells).map(c => c.innerText).join('\t') + '\n';
+            });
+            navigator.clipboard.writeText(text).then(() => alert('Таблица скопирована в буфер обмена (TSV).'));
+        }
+
+        function insertImage() {
+            const output = document.getElementById('toolOutput');
+            output.innerHTML = `
+                <div class="file-upload-area" onclick="document.getElementById('imageUpload').click()">
+                    <p class="text-[11px] text-gray-500">📎 Нажмите, чтобы загрузить изображение</p>
+                    <p class="text-[10px] text-gray-400 mt-1">PNG, JPG, GIF</p>
+                </div>
+                <input type="file" id="imageUpload" class="hidden" accept="image/*" onchange="handleImageUpload(event)">
+                <div id="imagePreview" class="mt-3"></div>
+            `;
+        }
+
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const preview = document.getElementById('imagePreview');
+                preview.innerHTML = `
+                    <img src="${e.target.result}" class="max-w-full rounded-lg border border-gray-200" style="max-height: 200px;">
+                    <div class="flex gap-2 mt-2">
+                        <button onclick="insertImageIntoEditor('${e.target.result}')" class="btn-primary text-white text-[11px] font-semibold py-1.5 px-3 rounded-lg">↩ Вставить в текст</button>
+                    </div>
+                `;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function insertImageIntoEditor(src) {
+            const editor = document.getElementById('editor');
+            editor.innerHTML += `<p><img src="${src}" style="max-width:100%;border-radius:8px;" /></p>`;
+            updateStats();
+        }
+
+        async function generateScheme() {
+            const text = document.getElementById('editor').innerText.trim();
+            if (!text) { alert('Введите текст для генерации схемы.'); return; }
+            showLoading('Генерируем схему...');
+            try {
+                const prompt = `На основе следующего текста создай структурированную схему (в виде списка с отступами), которая отражает логические связи между основными идеями. Используй символы для иерархии.\n\nТекст:\n${text.substring(0, 3000)}`;
+                const result = await callLLM(prompt);
+                document.getElementById('toolOutput').innerHTML = `<div class="result-box whitespace-pre-wrap">${result}</div>`;
+            } catch (e) {
+                alert('Ошибка: ' + e.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // === QUICK ACTIONS ===
+        function analyzeText() {
+            const text = document.getElementById('editor').innerText;
+            const chars = text.length;
+            const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+            const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0).length;
+            const avgWordLength = words ? (chars / words).toFixed(1) : 0;
+            const avgSentenceLength = sentences ? (words / sentences).toFixed(1) : 0;
+            alert(`📊 Анализ текста:\n\nСимволов: ${chars}\nСлов: ${words}\nПредложений: ${sentences}\nСредняя длина слова: ${avgWordLength} символов\nСредняя длина предложения: ${avgSentenceLength} слов`);
+        }
+
+        function findKeywords() {
+            const text = document.getElementById('editor').innerText.toLowerCase();
+            const words = text.match(/\b[а-яёa-z]{4,}\b/g) || [];
+            const freq = {};
+            words.forEach(w => { freq[w] = (freq[w] || 0) + 1; });
+            const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 15);
+            const list = sorted.map(([w, c]) => `${w} — ${c}`).join('\n');
+            alert(`🔑 Топ-15 ключевых слов:\n\n${list}`);
+        }
+
+        function checkReadability() {
+            const text = document.getElementById('editor').innerText;
+            const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+            const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0).length;
+            if (!sentences || !words) { alert('Недостаточно текста для анализа.'); return; }
+            const avgSentenceLength = words / sentences;
+            let level = 'Легко читается';
+            if (avgSentenceLength > 25) level = 'Сложно читается (длинные предложения)';
+            else if (avgSentenceLength > 15) level = 'Средняя сложность';
+            alert(`📖 Читабельность:\n\nСредняя длина предложения: ${avgSentenceLength.toFixed(1)} слов\nОценка: ${level}\n\nРекомендация: оптимальная длина предложения в академическом тексте — 15–20 слов.`);
+        }
+
+        async function generateAbstract() {
+            const text = document.getElementById('editor').innerText.trim();
+            if (!text) { alert('Введите текст для генерации аннотации.'); return; }
+            showLoading('Генерируем аннотацию...');
+            try {
+                const prompt = `Напиши краткую аннотацию (3-5 предложений) к следующему тексту ВКР. Аннотация должна отражать цель, методы, основные результаты и выводы.\n\nТекст:\n${text.substring(0, 5000)}`;
+                const result = await callLLM(prompt);
+                lastResult = result;
+                document.getElementById('resultStepName').textContent = 'Аннотация';
+                document.getElementById('resultContent').textContent = result;
+                document.getElementById('resultCard').style.display = 'block';
+            } catch (e) {
+                alert('Ошибка: ' + e.message);
+            } finally {
+                hideLoading();
+            }
         }
 
         // === INIT ===
