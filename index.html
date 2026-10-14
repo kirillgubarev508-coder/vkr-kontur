@@ -8,12 +8,13 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html-docx-js/0.3.1/html-docx.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         * { font-family: 'Inter', sans-serif; }
-        body { background: #f1f5f9; min-height: 100vh; }
+        body { background: #f1f5f9; min-height: 100vh; overflow: hidden; }
         .gradient-header {
             background: linear-gradient(135deg, #1e1b4b 0%, #4f46e5 45%, #7c3aed 100%);
             position: relative; overflow: hidden;
@@ -49,7 +50,7 @@
         .btn-secondary:hover { background: #cbd5e1; }
         .step-item {
             display: flex; align-items: flex-start; gap: 12px;
-            padding: 10px 12px; border-radius: 12px;
+            padding: 8px 12px; border-radius: 12px;
             cursor: pointer; transition: all 0.2s ease;
             border: 1px solid transparent;
         }
@@ -58,51 +59,52 @@
         .step-item.done .step-num { background: #10b981; color: white; }
         .step-item.done .step-label { color: #059669; }
         .step-item.running .step-num { background: #f59e0b; color: white; animation: pulse 1.5s infinite; }
+        .step-item.locked { opacity: 0.4; cursor: not-allowed; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
         .step-num {
-            width: 28px; height: 28px; border-radius: 50%;
+            width: 26px; height: 26px; border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
-            font-size: 12px; font-weight: 700;
+            font-size: 11px; font-weight: 700;
             background: #e2e8f0; color: #64748b; flex-shrink: 0;
             transition: all 0.3s ease;
         }
         .step-item.active .step-num { background: #7c3aed; color: white; }
-        .step-label { font-size: 13px; font-weight: 500; color: #475569; line-height: 1.3; }
-        .step-desc { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+        .step-label { font-size: 12px; font-weight: 500; color: #475569; line-height: 1.3; }
+        .step-desc { font-size: 10px; color: #94a3b8; margin-top: 2px; }
         .editor-toolbar {
             display: flex; flex-wrap: wrap; gap: 4px;
-            padding: 8px; background: #f8fafc;
+            padding: 6px; background: #f8fafc;
             border-radius: 10px; border: 1px solid #e2e8f0;
         }
         .toolbar-btn {
-            width: 32px; height: 32px; border-radius: 8px;
+            width: 30px; height: 30px; border-radius: 8px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 14px; cursor: pointer; transition: all 0.15s;
+            font-size: 13px; cursor: pointer; transition: all 0.15s;
             background: white; border: 1px solid #e2e8f0; color: #475569;
         }
         .toolbar-btn:hover { background: #ede9fe; border-color: #c4b5fd; color: #7c3aed; }
         .toolbar-divider { width: 1px; background: #e2e8f0; margin: 4px 2px; }
         .editor-area {
-            min-height: 400px; max-height: 600px; overflow-y: auto;
-            padding: 20px; font-size: 14px; line-height: 1.8;
+            min-height: 350px; max-height: 500px; overflow-y: auto;
+            padding: 16px; font-size: 13px; line-height: 1.8;
             color: #1e293b; outline: none;
         }
         .editor-area:focus { box-shadow: inset 0 0 0 2px rgba(124,58,237,0.1); }
-        .editor-area h1 { font-size: 22px; font-weight: 800; margin: 16px 0 8px; color: #1e1b4b; }
-        .editor-area h2 { font-size: 18px; font-weight: 700; margin: 14px 0 6px; color: #1e1b4b; }
-        .editor-area h3 { font-size: 16px; font-weight: 600; margin: 12px 0 4px; color: #1e1b4b; }
-        .editor-area p { margin: 8px 0; }
-        .editor-area ul, .editor-area ol { margin: 8px 0; padding-left: 24px; }
-        .editor-area li { margin: 4px 0; }
+        .editor-area h1 { font-size: 20px; font-weight: 800; margin: 14px 0 6px; color: #1e1b4b; }
+        .editor-area h2 { font-size: 17px; font-weight: 700; margin: 12px 0 5px; color: #1e1b4b; }
+        .editor-area h3 { font-size: 15px; font-weight: 600; margin: 10px 0 4px; color: #1e1b4b; }
+        .editor-area p { margin: 6px 0; }
+        .editor-area ul, .editor-area ol { margin: 6px 0; padding-left: 20px; }
+        .editor-area li { margin: 3px 0; }
         .editor-area blockquote {
-            border-left: 3px solid #7c3aed; padding-left: 12px;
-            margin: 12px 0; color: #64748b; font-style: italic;
+            border-left: 3px solid #7c3aed; padding-left: 10px;
+            margin: 10px 0; color: #64748b; font-style: italic;
         }
         .result-box {
             background: #f8fafc; border: 1px solid #e2e8f0;
-            border-radius: 12px; padding: 16px;
-            font-size: 13px; line-height: 1.7; color: #334155;
-            max-height: 400px; overflow-y: auto;
+            border-radius: 12px; padding: 14px;
+            font-size: 12px; line-height: 1.7; color: #334155;
+            max-height: 350px; overflow-y: auto;
         }
         .loading-overlay {
             position: fixed; inset: 0; background: rgba(255,255,255,0.7);
@@ -112,7 +114,7 @@
         .loading-overlay.active { display: flex; }
         .spinner {
             border: 4px solid #e2e8f0; border-top: 4px solid #7c3aed;
-            border-radius: 50%; width: 40px; height: 40px;
+            border-radius: 50%; width: 36px; height: 36px;
             animation: spin 0.8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -120,22 +122,26 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .progress-bar { height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden; }
         .progress-fill { height: 100%; background: linear-gradient(90deg, #4f46e5, #7c3aed); border-radius: 2px; transition: width 0.5s ease; }
-        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        .itmo-logo { display: flex; align-items: center; gap: 10px; }
-        .itmo-logo svg { height: 40px; width: auto; }
         .badge {
             display: inline-flex; align-items: center; padding: 3px 10px;
             border-radius: 9999px; font-size: 11px; font-weight: 600;
         }
         .stat-card {
-            background: white; border-radius: 12px; padding: 12px;
+            background: white; border-radius: 12px; padding: 10px;
             border: 1px solid #e2e8f0; text-align: center;
         }
-        .stat-value { font-size: 20px; font-weight: 800; color: #1e1b4b; }
-        .stat-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+        .stat-value { font-size: 18px; font-weight: 800; color: #1e1b4b; }
+        .stat-label { font-size: 9px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+        .file-upload-area {
+            border: 2px dashed #cbd5e1; border-radius: 12px; padding: 20px;
+            text-align: center; transition: all 0.2s ease; cursor: pointer;
+        }
+        .file-upload-area:hover { border-color: #7c3aed; background: #faf5ff; }
+        .file-upload-area.dragover { border-color: #7c3aed; background: #ede9fe; }
     </style>
 </head>
 <body>
@@ -150,11 +156,10 @@
 
     <!-- Header -->
     <header class="gradient-header text-white">
-        <div class="max-w-7xl mx-auto px-4 py-6 md:py-8 relative z-10">
-            <div class="flex items-center justify-between flex-wrap gap-4">
-                <div class="itmo-logo">
-                    <!-- ITMO Logo SVG -->
-                    <svg viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <div class="max-w-7xl mx-auto px-4 py-4 md:py-5 relative z-10">
+            <div class="flex items-center justify-between flex-wrap gap-3">
+                <div class="flex items-center gap-3">
+                    <svg viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="h-9 w-auto">
                         <line x1="20" y1="20" x2="45" y2="8" stroke="rgba(255,255,255,0.4)" stroke-width="0.8"/>
                         <line x1="20" y1="20" x2="45" y2="32" stroke="rgba(255,255,255,0.4)" stroke-width="0.8"/>
                         <line x1="45" y1="8" x2="70" y2="20" stroke="rgba(255,255,255,0.3)" stroke-width="0.8"/>
@@ -169,29 +174,30 @@
                         <circle cx="90" cy="28" r="2.5" fill="white" opacity="0.7"/>
                         <text x="100" y="25" fill="white" font-size="16" font-weight="800" font-family="Inter, sans-serif">ITMO</text>
                     </svg>
-                    <div class="h-8 w-px bg-white/20"></div>
+                    <div class="h-7 w-px bg-white/20"></div>
                     <div>
-                        <h1 class="text-lg md:text-xl font-extrabold tracking-tight leading-none">ВКР-Контур</h1>
-                        <p class="text-white/60 text-[11px] mt-0.5">Платформа сопровождения ВКР</p>
+                        <h1 class="text-base md:text-lg font-extrabold tracking-tight leading-none">ВКР-Контур</h1>
+                        <p class="text-white/60 text-[10px] mt-0.5">Платформа сопровождения ВКР</p>
                     </div>
                 </div>
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2 flex-wrap">
                     <span class="badge" style="background:rgba(255,255,255,0.15);color:#fff;">YandexGPT 5 Lite</span>
-                    <button onclick="exportDocx()" class="btn-secondary text-gray-700 text-xs font-semibold py-2 px-4 rounded-lg">💾 Скачать .docx</button>
-                    <button onclick="exportTxt()" class="btn-secondary text-gray-700 text-xs font-semibold py-2 px-4 rounded-lg">📄 Скачать .txt</button>
+                    <button onclick="exportDocx()" class="btn-secondary text-gray-700 text-[11px] font-semibold py-1.5 px-3 rounded-lg">💾 .docx</button>
+                    <button onclick="exportPdf()" class="btn-secondary text-gray-700 text-[11px] font-semibold py-1.5 px-3 rounded-lg">📕 PDF</button>
+                    <button onclick="exportTxt()" class="btn-secondary text-gray-700 text-[11px] font-semibold py-1.5 px-3 rounded-lg">📄 .txt</button>
                 </div>
             </div>
         </div>
     </header>
 
     <!-- Main Layout -->
-    <main class="max-w-7xl mx-auto px-4 py-6">
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+    <main class="max-w-7xl mx-auto px-3 py-4">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
 
-            <!-- Left Column: Editor & Stats -->
-            <div class="lg:col-span-8 space-y-4">
+            <!-- Left Column: Editor -->
+            <div class="lg:col-span-8 space-y-3">
                 <!-- Stats -->
-                <div class="grid grid-cols-3 gap-3 fade-in">
+                <div class="grid grid-cols-3 gap-2 fade-in">
                     <div class="stat-card">
                         <div class="stat-value" id="statChars">0</div>
                         <div class="stat-label">Символов</div>
@@ -202,23 +208,23 @@
                     </div>
                     <div class="stat-card">
                         <div class="stat-value" id="statSteps">0/14</div>
-                        <div class="stat-label">Шагов выполнено</div>
+                        <div class="stat-label">Шагов</div>
                     </div>
                 </div>
 
                 <!-- Upload Card -->
-                <div class="glass rounded-2xl p-5 fade-in">
-                    <div class="flex items-center justify-between mb-3">
-                        <h2 class="text-sm font-bold text-gray-800">📄 Исходный документ</h2>
+                <div class="glass rounded-2xl p-4 fade-in">
+                    <div class="flex items-center justify-between mb-2">
+                        <h2 class="text-xs font-bold text-gray-800">📄 Исходный документ</h2>
                         <div class="flex items-center gap-2">
-                            <label for="docxUpload" class="btn-primary text-white text-xs font-semibold py-2 px-4 rounded-lg cursor-pointer">
+                            <label for="docxUpload" class="btn-primary text-white text-[11px] font-semibold py-1.5 px-3 rounded-lg cursor-pointer">
                                 📎 Загрузить .docx
                             </label>
                             <input type="file" id="docxUpload" accept=".docx" class="hidden" onchange="handleDocxUpload(event)">
-                            <button onclick="clearEditor()" class="btn-secondary text-gray-600 text-xs font-semibold py-2 px-4 rounded-lg">🗑 Очистить</button>
+                            <button onclick="clearEditor()" class="btn-secondary text-gray-600 text-[11px] font-semibold py-1.5 px-3 rounded-lg">🗑 Очистить</button>
                         </div>
                     </div>
-                    <div class="flex items-center gap-2 text-[11px] text-gray-400 mb-3">
+                    <div class="flex items-center gap-2 text-[10px] text-gray-400">
                         <span id="fileName">Файл не загружен</span>
                         <span id="fileSize"></span>
                     </div>
@@ -226,11 +232,11 @@
 
                 <!-- Editor Card -->
                 <div class="glass rounded-2xl overflow-hidden fade-in">
-                    <div class="px-5 pt-4 pb-2 flex items-center justify-between">
-                        <h2 class="text-sm font-bold text-gray-800">✏️ Редактор текста</h2>
-                        <span class="text-[11px] text-gray-400" id="wordCount">0 символов</span>
+                    <div class="px-4 pt-3 pb-1 flex items-center justify-between">
+                        <h2 class="text-xs font-bold text-gray-800">✏️ Редактор текста</h2>
+                        <span class="text-[10px] text-gray-400" id="wordCount">0 символов</span>
                     </div>
-                    <div class="px-5 pb-2">
+                    <div class="px-4 pb-1">
                         <div class="editor-toolbar">
                             <button class="toolbar-btn" onclick="formatDoc('bold')" title="Жирный"><b>B</b></button>
                             <button class="toolbar-btn" onclick="formatDoc('italic')" title="Курсив"><i>I</i></button>
@@ -249,59 +255,68 @@
                             <button class="toolbar-btn" onclick="formatDoc('redo')" title="Повторить">↷</button>
                         </div>
                     </div>
-                    <div class="px-5 pb-5">
+                    <div class="px-4 pb-4">
                         <div id="editor" class="editor-area" contenteditable="true" spellcheck="true" oninput="updateStats()">
                             <h1>Введение</h1>
                             <p>Вставьте текст вашей выпускной квалификационной работы или загрузите <strong>.docx</strong> файл. Редактор поддерживает форматирование, списки, заголовки и цитаты.</p>
-                            <p>Выберите шаг пайплайна в правой колонке и нажмите <strong>«Применить шаг»</strong> — нейросеть обработает текст и вернёт результат. Шаги можно выполнять многократно.</p>
+                            <p>Выберите шаг пайплайна в правой колонке и нажмите <strong>«Применить шаг»</strong> — нейросеть обработает текст и вернёт результат.</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- Result Card -->
-                <div class="glass rounded-2xl p-5 fade-in" id="resultCard" style="display:none;">
-                    <div class="flex items-center justify-between mb-3">
-                        <h2 class="text-sm font-bold text-gray-800">📊 Результат шага: <span id="resultStepName" class="text-purple-600"></span></h2>
+                <div class="glass rounded-2xl p-4 fade-in" id="resultCard" style="display:none;">
+                    <div class="flex items-center justify-between mb-2">
+                        <h2 class="text-xs font-bold text-gray-800">📊 Результат: <span id="resultStepName" class="text-purple-600"></span></h2>
                         <button onclick="document.getElementById('resultCard').style.display='none'" class="text-gray-400 hover:text-gray-600 text-lg">×</button>
                     </div>
                     <div id="resultContent" class="result-box whitespace-pre-wrap"></div>
-                    <div class="flex gap-2 mt-3">
-                        <button onclick="insertResultIntoEditor()" class="btn-primary text-white text-xs font-semibold py-2 px-4 rounded-lg">↩ Вставить в редактор</button>
-                        <button onclick="copyResult()" class="btn-secondary text-gray-600 text-xs font-semibold py-2 px-4 rounded-lg">📋 Копировать</button>
-                        <button onclick="appendResultToEditor()" class="btn-secondary text-gray-600 text-xs font-semibold py-2 px-4 rounded-lg">➕ Добавить в конец</button>
+                    <div class="flex gap-2 mt-2 flex-wrap">
+                        <button onclick="insertResultIntoEditor()" class="btn-primary text-white text-[11px] font-semibold py-1.5 px-3 rounded-lg">↩ Вставить</button>
+                        <button onclick="copyResult()" class="btn-secondary text-gray-600 text-[11px] font-semibold py-1.5 px-3 rounded-lg">📋 Копировать</button>
+                        <button onclick="appendResultToEditor()" class="btn-secondary text-gray-600 text-[11px] font-semibold py-1.5 px-3 rounded-lg">➕ В конец</button>
                     </div>
                 </div>
             </div>
 
             <!-- Right Column: Pipeline -->
-            <div class="lg:col-span-4 space-y-4">
-                <div class="glass rounded-2xl p-5 fade-in">
-                    <div class="flex items-center justify-between mb-4">
-                        <h2 class="text-sm font-bold text-gray-800">🗺️ Пайплайн</h2>
-                        <span class="text-[11px] text-gray-400" id="progressText">0 / 14</span>
+            <div class="lg:col-span-4 space-y-3">
+                <!-- Steps Card -->
+                <div class="glass rounded-2xl p-4 fade-in">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-xs font-bold text-gray-800">🗺️ Пайплайн</h2>
+                        <span class="text-[10px] text-gray-400" id="progressText">0 / 14</span>
                     </div>
-                    <div class="progress-bar mb-4"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
-                    <div class="space-y-1" id="stepsList"></div>
+                    <div class="progress-bar mb-3"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+                    <div class="space-y-0.5 max-h-[400px] overflow-y-auto" id="stepsList"></div>
                 </div>
 
                 <!-- Action Card -->
-                <div class="glass rounded-2xl p-5 fade-in">
-                    <h2 class="text-sm font-bold text-gray-800 mb-3">⚡ Действие</h2>
-                    <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-3 mb-3">
-                        <p class="text-[12px] text-indigo-700">Выбранный шаг: <strong id="selectedStepName">—</strong></p>
+                <div class="glass rounded-2xl p-4 fade-in">
+                    <h2 class="text-xs font-bold text-gray-800 mb-2">⚡ Действие</h2>
+                    <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-2.5 mb-2">
+                        <p class="text-[11px] text-indigo-700">Шаг: <strong id="selectedStepName">—</strong></p>
                     </div>
-                    <button id="applyBtn" onclick="applyStep()" class="btn-primary text-white font-semibold py-3 px-6 rounded-xl w-full text-sm" disabled>Применить шаг</button>
-                    <button onclick="resetAll()" class="btn-secondary text-gray-600 font-semibold py-2.5 px-6 rounded-xl w-full text-xs mt-2">Сбросить всё</button>
+                    <div id="fileUploadForStep" style="display:none;" class="mb-2">
+                        <div class="file-upload-area" id="stepFileArea" onclick="document.getElementById('stepFileInput').click()">
+                            <p class="text-[11px] text-gray-500">📎 Нажмите или перетащите файл</p>
+                            <p class="text-[10px] text-gray-400 mt-1">Для этого шага можно загрузить файл</p>
+                        </div>
+                        <input type="file" id="stepFileInput" class="hidden" accept=".docx,.txt,.pdf" onchange="handleStepFile(event)">
+                        <p id="stepFileName" class="text-[10px] text-gray-400 mt-1"></p>
+                    </div>
+                    <button id="applyBtn" onclick="applyStep()" class="btn-primary text-white font-semibold py-2.5 px-5 rounded-xl w-full text-xs" disabled>Применить шаг</button>
+                    <button onclick="resetAll()" class="btn-secondary text-gray-600 font-semibold py-2 px-5 rounded-xl w-full text-[11px] mt-2">Сбросить всё</button>
                 </div>
 
                 <!-- Info Card -->
-                <div class="glass rounded-2xl p-5 fade-in">
-                    <h2 class="text-sm font-bold text-gray-800 mb-3">ℹ️ О платформе</h2>
-                    <div class="space-y-2 text-[12px] text-gray-500 leading-relaxed">
+                <div class="glass rounded-2xl p-4 fade-in">
+                    <h2 class="text-xs font-bold text-gray-800 mb-2">ℹ️ О платформе</h2>
+                    <div class="space-y-1.5 text-[11px] text-gray-500 leading-relaxed">
                         <p>• <strong>Не пишет работу вместо вас.</strong> Платформа предлагает доработки, а решение принимаете вы.</p>
                         <p>• <strong>Проверяемые источники.</strong> Только DOI и реальные базы данных.</p>
                         <p>• <strong>Паспорт авторства.</strong> Фиксация версий и AI-вклада для защиты от ложных срабатываний детекторов.</p>
-                        <p class="text-[11px] text-gray-400 pt-2 border-t border-gray-100">MVP • Yandex AI Studio • Университет ИТМО</p>
+                        <p class="text-[10px] text-gray-400 pt-1.5 border-t border-gray-100">MVP • Yandex AI Studio • Университет ИТМО</p>
                     </div>
                 </div>
             </div>
@@ -312,51 +327,81 @@
         // === CONFIG ===
         const API_URL = 'https://d5dvt9csk3t8rstmokg8.g2n58e0c.apigw.yandexcloud.net/';
 
-        // === PIPELINE STEPS (все 14 шагов из вашего ТЗ) ===
+        // === PIPELINE STEPS ===
         const STEPS = [
-            { id: 0, label: 'Загрузка и профиль', desc: 'Анализ структуры, объёма, глав', prompt: 'Проанализируй структуру следующего текста ВКР: определи наличие введения, глав, заключения, оцени объём и готовность. Укажи явные пробелы.\n\nТекст:\n{text}' },
-            { id: 1, label: 'Требования научрука', desc: 'Превращение замечаний в чек-лист', prompt: 'Преобразуй следующие требования и замечания в структурированный чек-лист с приоритетами и сроками.\n\nТребования:\n{text}' },
-            { id: 2, label: 'Валидация источников', desc: 'Проверка DOI, Crossref, OpenAlex', prompt: 'Проверь следующие источники: укажи, какие выглядят валидными, какие сомнительными, какие могли быть выдуманы. Объясни критерии.\n\nСписок:\n{text}' },
-            { id: 3, label: 'Анализ источниковой базы', desc: 'Карта литературы, пробелы', prompt: 'Проанализируй источниковую базу текста: выдели основных авторов, методы, противоречия, устаревшие блоки. Предложи, что добавить.\n\nТекст:\n{text}' },
-            { id: 4, label: 'Доработка текста', desc: 'Усиление аргументации', prompt: 'Улучши следующий текст: усиль аргументацию, убери неподтверждённые утверждения, перепиши слабые места в академическом стиле.\n\nТекст:\n{text}' },
-            { id: 5, label: 'Подбор источников', desc: 'Новые релевантные работы', prompt: 'Предложи 5-7 дополнительных научных источников по теме текста. Для каждого укажи автора, год, название, DOI (если есть) и поясни, зачем он нужен.\n\nТекст:\n{text}' },
-            { id: 6, label: 'Интеграция источников', desc: 'Встраивание в обзор и выводы', prompt: 'На основе следующего текста предложи, как интегрировать новые источники в обзор литературы, методы и выводы. Дай конкретные формулировки.\n\nТекст:\n{text}' },
-            { id: 7, label: 'Научная новизна', desc: 'Отличие от конкурентов', prompt: 'Сформулируй черновик раздела о научной новизне: в чём отличие данной работы от существующих, какие пробелы она закрывает.\n\nТекст:\n{text}' },
-            { id: 8, label: 'Язык и структура', desc: 'Логика, связность, стиль', prompt: 'Проверь логику, связность и академический стиль текста. Предложи правки для аннотации, введения и выводов.\n\nТекст:\n{text}' },
-            { id: 9, label: 'ГОСТ и требования', desc: 'Стили, поля, нумерация', prompt: 'Проверь текст на соответствие ГОСТ 7.32-2017: оформление заголовков, нумерация, таблицы, рисунки, список литературы. Выдай список нарушений.\n\nТекст:\n{text}' },
-            { id: 10, label: 'Авторство и AI-след', desc: 'Паспорт авторства', prompt: 'Составь паспорт авторства для данного текста: зафиксируй структуру, ключевые тезисы, объём. Отметь, какие фрагменты могли быть сгенерированы AI.\n\nТекст:\n{text}' },
-            { id: 11, label: 'Подготовка к защите', desc: 'Речь, слайды, вопросы', prompt: 'Подготовь комплект для защиты: тезисы речи (2-3 минуты), структуру слайдов (8-10), вероятные вопросы комиссии и слабые места работы.\n\nТекст:\n{text}' },
-            { id: 12, label: 'Публикация (опционально)', desc: 'Журнал, cover letter', prompt: 'Подбери подходящий журнал (ВАК/Scopus) для публикации по теме текста. Составь черновик cover letter и оцени риск отказа.\n\nТекст:\n{text}' },
-            { id: 13, label: 'Финальный пакет', desc: 'Готовая работа + отчёт', prompt: 'Собери итоговый отчёт по работе: что сделано, какие шаги пройдены, какие результаты достигнуты, что осталось. Сформируй финальный чек-лист.\n\nТекст:\n{text}' },
+            { id: 0, label: 'Загрузка и профиль', desc: 'Анализ структуры, объёма, глав', prompt: 'Проанализируй структуру следующего текста ВКР: определи наличие введения, глав, заключения, оцени объём и готовность. Укажи явные пробелы.\n\nТекст:\n{text}', fileUpload: false },
+            { id: 1, label: 'Требования научрука', desc: 'Превращение замечаний в чек-лист', prompt: 'Преобразуй следующие требования и замечания в структурированный чек-лист с приоритетами и сроками.\n\nТребования:\n{text}', fileUpload: true },
+            { id: 2, label: 'Валидация источников', desc: 'Проверка DOI, Crossref, OpenAlex', prompt: 'Проверь следующие источники: укажи, какие выглядят валидными, какие сомнительными, какие могли быть выдуманы. Объясни критерии.\n\nСписок:\n{text}', fileUpload: true },
+            { id: 3, label: 'Анализ источниковой базы', desc: 'Карта литературы, пробелы', prompt: 'Проанализируй источниковую базу текста: выдели основных авторов, методы, противоречия, устаревшие блоки. Предложи, что добавить.\n\nТекст:\n{text}', fileUpload: false },
+            { id: 4, label: 'Доработка текста', desc: 'Усиление аргументации', prompt: 'Улучши следующий текст: усиль аргументацию, убери неподтверждённые утверждения, перепиши слабые места в академическом стиле.\n\nТекст:\n{text}', fileUpload: false },
+            { id: 5, label: 'Подбор источников', desc: 'Новые релевантные работы', prompt: 'Предложи 5-7 дополнительных научных источников по теме текста. Для каждого укажи автора, год, название, DOI (если есть) и поясни, зачем он нужен.\n\nТекст:\n{text}', fileUpload: false },
+            { id: 6, label: 'Интеграция источников', desc: 'Встраивание в обзор и выводы', prompt: 'На основе следующего текста предложи, как интегрировать новые источники в обзор литературы, методы и выводы. Дай конкретные формулировки.\n\nТекст:\n{text}', fileUpload: false },
+            { id: 7, label: 'Научная новизна', desc: 'Отличие от конкурентов', prompt: 'Сформулируй черновик раздела о научной новизне: в чём отличие данной работы от существующих, какие пробелы она закрывает.\n\nТекст:\n{text}', fileUpload: false },
+            { id: 8, label: 'Язык и структура', desc: 'Логика, связность, стиль', prompt: 'Проверь логику, связность и академический стиль текста. Предложи правки для аннотации, введения и выводов.\n\nТекст:\n{text}', fileUpload: false },
+            { id: 9, label: 'ГОСТ и требования', desc: 'Стили, поля, нумерация', prompt: 'Проверь текст на соответствие ГОСТ 7.32-2017: оформление заголовков, нумерация, таблицы, рисунки, список литературы. Выдай список нарушений.\n\nТекст:\n{text}', fileUpload: false },
+            { id: 10, label: 'Авторство и AI-след', desc: 'Паспорт авторства', prompt: 'Составь паспорт авторства для данного текста: зафиксируй структуру, ключевые тезисы, объём. Отметь, какие фрагменты могли быть сгенерированы AI.\n\nТекст:\n{text}', fileUpload: false },
+            { id: 11, label: 'Подготовка к защите', desc: 'Речь, слайды, вопросы', prompt: 'Подготовь комплект для защиты: тезисы речи (2-3 минуты), структуру слайдов (8-10), вероятные вопросы комиссии и слабые места работы.\n\nТекст:\n{text}', fileUpload: false },
+            { id: 12, label: 'Публикация (опционально)', desc: 'Журнал, cover letter', prompt: 'Подбери подходящий журнал (ВАК/Scopus) для публикации по теме текста. Составь черновик cover letter и оцени риск отказа.\n\nТекст:\n{text}', fileUpload: false },
+            { id: 13, label: 'Финальный пакет', desc: 'Готовая работа + отчёт', prompt: 'Собери итоговый отчёт по работе: что сделано, какие шаги пройдены, какие результаты достигнуты, что осталось. Сформируй финальный чек-лист.\n\nТекст:\n{text}', fileUpload: false },
         ];
 
         let selectedStepId = null;
         let lastResult = '';
         let completedSteps = new Set();
         let runningStepId = null;
+        let stepFileContent = '';
 
-        // === RENDER STEPS ===
+        // === RENDER STEPS (с последовательным доступом) ===
         function renderSteps() {
             const list = document.getElementById('stepsList');
-            list.innerHTML = STEPS.map(s => `
-                <div class="step-item ${completedSteps.has(s.id) ? 'done' : ''} ${selectedStepId === s.id ? 'active' : ''} ${runningStepId === s.id ? 'running' : ''}"
-                     onclick="selectStep(${s.id})" id="step-${s.id}">
-                    <div class="step-num">${completedSteps.has(s.id) ? '✓' : (runningStepId === s.id ? '...' : s.id)}</div>
+            const maxUnlocked = getMaxUnlockedStep();
+            list.innerHTML = STEPS.map(s => {
+                const isLocked = s.id > maxUnlocked;
+                const isDone = completedSteps.has(s.id);
+                const isActive = selectedStepId === s.id;
+                const isRunning = runningStepId === s.id;
+                let cls = 'step-item';
+                if (isDone) cls += ' done';
+                if (isActive) cls += ' active';
+                if (isRunning) cls += ' running';
+                if (isLocked) cls += ' locked';
+                return `
+                <div class="${cls}" onclick="${isLocked ? '' : `selectStep(${s.id})`}" id="step-${s.id}">
+                    <div class="step-num">${isDone ? '✓' : (isRunning ? '...' : (isLocked ? '🔒' : s.id))}</div>
                     <div>
                         <div class="step-label">${s.label}</div>
-                        <div class="step-desc">${s.desc}</div>
+                        <div class="step-desc">${isLocked ? 'Завершите предыдущие шаги' : s.desc}</div>
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
             updateProgress();
             updateStats();
         }
 
+        function getMaxUnlockedStep() {
+            // Первый незавершённый шаг + 1 (можно вернуться к любому предыдущему)
+            for (let i = 0; i < STEPS.length; i++) {
+                if (!completedSteps.has(i)) return i;
+            }
+            return STEPS.length - 1;
+        }
+
         function selectStep(id) {
+            if (id > getMaxUnlockedStep()) return;
             selectedStepId = id;
             const step = STEPS.find(s => s.id === id);
             document.getElementById('selectedStepName').textContent = step.label;
             document.getElementById('applyBtn').disabled = false;
+            // Показываем/скрываем загрузку файла
+            const fileUploadDiv = document.getElementById('fileUploadForStep');
+            if (step.fileUpload) {
+                fileUploadDiv.style.display = 'block';
+            } else {
+                fileUploadDiv.style.display = 'none';
+                stepFileContent = '';
+                document.getElementById('stepFileName').textContent = '';
+            }
             renderSteps();
         }
 
@@ -413,6 +458,29 @@
             }
         }
 
+        // === STEP FILE UPLOAD ===
+        function handleStepFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            document.getElementById('stepFileName').textContent = `Загружен: ${file.name}`;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                stepFileContent = e.target.result;
+            };
+            if (file.name.endsWith('.txt')) {
+                reader.readAsText(file);
+            } else if (file.name.endsWith('.docx')) {
+                // Для .docx используем mammoth
+                file.arrayBuffer().then(ab => {
+                    mammoth.convertToHtml({ arrayBuffer: ab }).then(result => {
+                        stepFileContent = result.value;
+                    });
+                });
+            } else {
+                stepFileContent = '';
+            }
+        }
+
         // === API CALL ===
         async function callYandexGPT(prompt) {
             const response = await fetch(API_URL, {
@@ -431,12 +499,16 @@
             return data.result.alternatives[0].message.text;
         }
 
-        // === APPLY STEP (можно выполнять многократно) ===
+        // === APPLY STEP ===
         async function applyStep() {
             if (selectedStepId === null) return;
             const step = STEPS.find(s => s.id === selectedStepId);
-            const text = document.getElementById('editor').innerText.trim();
-            if (!text) { alert('Введите текст работы.'); return; }
+            let text = document.getElementById('editor').innerText.trim();
+            // Если для шага загружен файл, используем его содержимое
+            if (step.fileUpload && stepFileContent) {
+                text = stepFileContent;
+            }
+            if (!text) { alert('Введите текст работы или загрузите файл.'); return; }
 
             runningStepId = selectedStepId;
             renderSteps();
@@ -465,7 +537,7 @@
         function insertResultIntoEditor() {
             if (!lastResult) return;
             const editor = document.getElementById('editor');
-            editor.innerHTML += '<hr style="border-color:#e2e8f0;margin:16px 0;">' + lastResult.replace(/\n/g, '<br>');
+            editor.innerHTML += '<hr style="border-color:#e2e8f0;margin:12px 0;">' + lastResult.replace(/\n/g, '<br>');
             updateStats();
         }
 
@@ -495,17 +567,32 @@
             saveAs(blob, 'vkr-kontur.txt');
         }
 
+        function exportPdf() {
+            const element = document.getElementById('editor');
+            const opt = {
+                margin: 1,
+                filename: 'vkr-kontur.pdf',
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2 },
+                jsPDF: { unit: 'cm', format: 'a4', orientation: 'portrait' }
+            };
+            html2pdf().set(opt).from(element).save();
+        }
+
         // === RESET ===
         function resetAll() {
             completedSteps.clear();
             selectedStepId = null;
             lastResult = '';
+            stepFileContent = '';
             document.getElementById('resultCard').style.display = 'none';
             document.getElementById('selectedStepName').textContent = '—';
             document.getElementById('applyBtn').disabled = true;
             document.getElementById('editor').innerHTML = '<h1>Введение</h1><p>Вставьте текст вашей выпускной квалификационной работы или загрузите <strong>.docx</strong> файл.</p>';
             document.getElementById('fileName').textContent = 'Файл не загружен';
             document.getElementById('fileSize').textContent = '';
+            document.getElementById('fileUploadForStep').style.display = 'none';
+            document.getElementById('stepFileName').textContent = '';
             updateStats();
             renderSteps();
         }
