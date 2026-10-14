@@ -105,7 +105,7 @@
             background: #f8fafc; border: 1px solid #e2e8f0;
             border-radius: 12px; padding: 14px;
             font-size: 12px; line-height: 1.7; color: #334155;
-            max-height: 350px; overflow-y: auto;
+            max-height: 400px; overflow-y: auto;
         }
         .loading-overlay {
             position: fixed; inset: 0; background: rgba(255,255,255,0.7);
@@ -142,35 +142,35 @@
             text-align: center; transition: all 0.2s ease; cursor: pointer;
         }
         .file-upload-area:hover { border-color: #7c3aed; background: #faf5ff; }
-        .file-upload-area.dragover { border-color: #7c3aed; background: #ede9fe; }
         .tool-panel {
-            display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
         }
         .tool-btn {
             display: flex; flex-direction: column; align-items: center; gap: 4px;
-            padding: 10px; border-radius: 10px; background: #f8fafc;
+            padding: 10px 6px; border-radius: 10px; background: #f8fafc;
             border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.2s;
-            font-size: 11px; font-weight: 500; color: #475569;
+            font-size: 10px; font-weight: 500; color: #475569; text-align: center;
         }
         .tool-btn:hover { background: #ede9fe; border-color: #c4b5fd; color: #7c3aed; }
         .tool-icon { font-size: 18px; }
-        .chart-container { position: relative; height: 200px; width: 100%; }
+        .chart-container { position: relative; height: 220px; width: 100%; }
         .table-container { overflow-x: auto; margin: 10px 0; }
         .dynamic-table { width: 100%; border-collapse: collapse; font-size: 12px; }
         .dynamic-table th, .dynamic-table td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; }
         .dynamic-table th { background: #f1f5f9; font-weight: 600; }
         .quick-action {
-            display: flex; align-items: center; gap: 6px;
-            padding: 8px 10px; border-radius: 8px; background: #f8fafc;
+            display: flex; align-items: center; gap: 8px;
+            padding: 10px 12px; border-radius: 10px; background: #f8fafc;
             border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.2s;
             font-size: 11px; font-weight: 500; color: #475569;
         }
         .quick-action:hover { background: #ede9fe; border-color: #c4b5fd; color: #7c3aed; }
+        select optgroup { font-weight: 600; color: #4f46e5; font-size: 11px; }
+        select option { font-weight: 400; color: #475569; }
     </style>
 </head>
 <body>
 
-    <!-- Loading Overlay -->
     <div class="loading-overlay" id="loadingOverlay">
         <div class="flex flex-col items-center gap-4">
             <div class="spinner"></div>
@@ -178,7 +178,6 @@
         </div>
     </div>
 
-    <!-- Header -->
     <header class="gradient-header text-white">
         <div class="max-w-7xl mx-auto px-4 py-4 md:py-5 relative z-10">
             <div class="flex items-center justify-between flex-wrap gap-3">
@@ -205,7 +204,7 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-2 flex-wrap">
-                    <span class="badge" style="background:rgba(255,255,255,0.15);color:#fff;">YandexGPT 5 Lite</span>
+                    <span class="badge" style="background:rgba(255,255,255,0.15);color:#fff;" id="currentModelBadge">YandexGPT 5 Lite</span>
                     <button onclick="exportDocx()" class="btn-secondary text-gray-700 text-[11px] font-semibold py-1.5 px-3 rounded-lg">💾 .docx</button>
                     <button onclick="exportPdf()" class="btn-secondary text-gray-700 text-[11px] font-semibold py-1.5 px-3 rounded-lg">📕 PDF</button>
                     <button onclick="exportTxt()" class="btn-secondary text-gray-700 text-[11px] font-semibold py-1.5 px-3 rounded-lg">📄 .txt</button>
@@ -214,13 +213,11 @@
         </div>
     </header>
 
-    <!-- Main Layout -->
     <main class="max-w-7xl mx-auto px-3 py-4">
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
 
-            <!-- Left Column: Editor & Tools -->
+            <!-- LEFT COLUMN -->
             <div class="lg:col-span-8 space-y-3">
-                <!-- Stats -->
                 <div class="grid grid-cols-4 gap-2 fade-in">
                     <div class="stat-card">
                         <div class="stat-value" id="statChars">0</div>
@@ -240,7 +237,6 @@
                     </div>
                 </div>
 
-                <!-- Upload Card -->
                 <div class="glass rounded-2xl p-4 fade-in">
                     <div class="flex items-center justify-between mb-2">
                         <h2 class="text-xs font-bold text-gray-800">📄 Исходный документ</h2>
@@ -258,7 +254,6 @@
                     </div>
                 </div>
 
-                <!-- Editor Card -->
                 <div class="glass rounded-2xl overflow-hidden fade-in">
                     <div class="px-4 pt-3 pb-1 flex items-center justify-between">
                         <h2 class="text-xs font-bold text-gray-800">✏️ Редактор текста</h2>
@@ -292,7 +287,6 @@
                     </div>
                 </div>
 
-                <!-- Tools Panel -->
                 <div class="glass rounded-2xl p-4 fade-in">
                     <div class="flex items-center justify-between mb-3">
                         <h2 class="text-xs font-bold text-gray-800">🧰 Инструменты</h2>
@@ -309,7 +303,7 @@
                         </div>
                         <div class="tool-btn" onclick="insertImage()">
                             <span class="tool-icon">🖼️</span>
-                            <span>Изображение</span>
+                            <span>Картинка</span>
                         </div>
                         <div class="tool-btn" onclick="generateScheme()">
                             <span class="tool-icon">🔗</span>
@@ -319,7 +313,6 @@
                     <div id="toolOutput" class="mt-3"></div>
                 </div>
 
-                <!-- Quick Actions -->
                 <div class="glass rounded-2xl p-4 fade-in">
                     <h2 class="text-xs font-bold text-gray-800 mb-2">⚡ Быстрые действия</h2>
                     <div class="grid grid-cols-2 gap-2">
@@ -342,7 +335,6 @@
                     </div>
                 </div>
 
-                <!-- Result Card -->
                 <div class="glass rounded-2xl p-4 fade-in" id="resultCard" style="display:none;">
                     <div class="flex items-center justify-between mb-2">
                         <h2 class="text-xs font-bold text-gray-800">📊 Результат: <span id="resultStepName" class="text-purple-600"></span></h2>
@@ -357,9 +349,8 @@
                 </div>
             </div>
 
-            <!-- Right Column: Pipeline -->
+            <!-- RIGHT COLUMN -->
             <div class="lg:col-span-4 space-y-3">
-                <!-- Steps Card -->
                 <div class="glass rounded-2xl p-4 fade-in">
                     <div class="flex items-center justify-between mb-3">
                         <h2 class="text-xs font-bold text-gray-800">🗺️ Пайплайн</h2>
@@ -369,18 +360,26 @@
                     <div class="space-y-0.5 max-h-[400px] overflow-y-auto" id="stepsList"></div>
                 </div>
 
-                <!-- Action Card -->
                 <div class="glass rounded-2xl p-4 fade-in">
                     <h2 class="text-xs font-bold text-gray-800 mb-2">⚡ Действие</h2>
                     <div class="mb-3">
                         <label class="block text-xs font-medium text-gray-600 mb-1">Модель:</label>
-                        <select id="modelSelect" class="w-full border border-gray-200 rounded-lg p-2 text-xs text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                            <option value="yandexgpt">YandexGPT 5 Lite (РФ)</option>
-                            <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast">Llama 3.3 70B (Cloudflare)</option>
-                            <option value="@cf/deepseek-ai/deepseek-r1-distill-qwen-32b">DeepSeek R1 (Cloudflare)</option>
-                            <option value="@cf/qwen/qwen3-30b-a3b-fp8">Qwen 3 30B (Cloudflare)</option>
-                            <option value="openrouter/deepseek/deepseek-r1:free">DeepSeek R1 (OpenRouter)</option>
-                            <option value="openrouter/meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B (OpenRouter)</option>
+                        <select id="modelSelect" onchange="updateModelBadge()" class="w-full border border-gray-200 rounded-lg p-2 text-xs text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                            <optgroup label="Yandex Cloud">
+                                <option value="yandexgpt-5-lite">YandexGPT 5 Lite (бесплатно)</option>
+                                <option value="yandexgpt-5-pro">YandexGPT 5 Pro (мощная)</option>
+                                <option value="yandexgpt-5">YandexGPT 5 (стандартная)</option>
+                                <option value="yandexgpt-lite">YandexGPT Lite (старая)</option>
+                                <option value="yandexgpt">YandexGPT (старая)</option>
+                            </optgroup>
+                            <optgroup label="DeepSeek (прямое подключение)">
+                                <option value="deepseek-chat">DeepSeek Chat</option>
+                                <option value="deepseek-reasoner">DeepSeek Reasoner (R1)</option>
+                            </optgroup>
+                            <optgroup label="Zveno AI">
+                                <option value="zveno/qwen/qwen3.8-27b">Qwen 3 27B (Zveno)</option>
+                                <option value="zveno/google/gemma-3-27b-it">Gemma 3 27B (Zveno)</option>
+                            </optgroup>
                         </select>
                     </div>
                     <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-2.5 mb-2">
@@ -398,7 +397,6 @@
                     <button onclick="resetAll()" class="btn-secondary text-gray-600 font-semibold py-2 px-5 rounded-xl w-full text-[11px] mt-2">Сбросить всё</button>
                 </div>
 
-                <!-- Info Card -->
                 <div class="glass rounded-2xl p-4 fade-in">
                     <h2 class="text-xs font-bold text-gray-800 mb-2">ℹ️ О платформе</h2>
                     <div class="space-y-1.5 text-[11px] text-gray-500 leading-relaxed">
@@ -414,10 +412,7 @@
 
     <script>
         // === CONFIG ===
-        // URL вашего Cloudflare Worker или API Gateway
-        const API_URL = 'https://vkr-kontur-gateway.<ваш-субдомен>.workers.dev';
-        // Для локального тестирования без Cloudflare можно временно указать прямой URL YandexGPT
-        // const API_URL = 'https://functions.yandexcloud.net/<ID_вашей_функции>';
+        const API_URL = 'https://d5d37c8mt9t2v19cbku9.g2n58e0c.apigw.yandexcloud.net';
 
         // === PIPELINE STEPS ===
         const STEPS = [
@@ -442,6 +437,13 @@
         let completedSteps = new Set();
         let runningStepId = null;
         let stepFileContent = '';
+
+        // === MODEL BADGE ===
+        function updateModelBadge() {
+            const select = document.getElementById('modelSelect');
+            const selectedOption = select.options[select.selectedIndex];
+            document.getElementById('currentModelBadge').textContent = selectedOption.textContent;
+        }
 
         // === RENDER STEPS ===
         function renderSteps() {
@@ -502,7 +504,7 @@
             document.getElementById('progressFill').style.width = `${(done / total) * 100}%`;
         }
 
-        // === EDITOR FUNCTIONS ===
+        // === EDITOR ===
         function formatDoc(cmd, val) {
             document.execCommand(cmd, false, val || null);
             document.getElementById('editor').focus();
@@ -527,22 +529,18 @@
             updateStats();
         }
 
-        // === DOCX UPLOAD ===
+        // === DOCX ===
         async function handleDocxUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
             document.getElementById('fileName').textContent = file.name;
             document.getElementById('fileSize').textContent = `(${(file.size / 1024).toFixed(1)} КБ)`;
-
             showLoading('Извлекаем текст из .docx...');
             try {
                 const arrayBuffer = await file.arrayBuffer();
                 const result = await mammoth.convertToHtml({ arrayBuffer });
                 document.getElementById('editor').innerHTML = result.value;
                 updateStats();
-                if (result.messages.length) {
-                    console.warn('Mammoth warnings:', result.messages);
-                }
             } catch (e) {
                 alert('Ошибка чтения .docx: ' + e.message);
             } finally {
@@ -550,21 +548,18 @@
             }
         }
 
-        // === STEP FILE UPLOAD ===
         function handleStepFile(event) {
             const file = event.target.files[0];
             if (!file) return;
             document.getElementById('stepFileName').textContent = `Загружен: ${file.name}`;
             const reader = new FileReader();
-            reader.onload = (e) => {
-                stepFileContent = e.target.result;
-            };
+            reader.onload = (e) => { stepFileContent = e.target.result; };
             if (file.name.endsWith('.txt')) {
                 reader.readAsText(file);
             } else if (file.name.endsWith('.docx')) {
                 file.arrayBuffer().then(ab => {
                     mammoth.convertToHtml({ arrayBuffer: ab }).then(result => {
-                        stepFileContent = result.html || result.value;
+                        stepFileContent = result.value;
                     });
                 });
             } else {
@@ -572,7 +567,7 @@
             }
         }
 
-        // === API CALL ===
+        // === API ===
         async function callLLM(prompt) {
             const selectedModel = document.getElementById('modelSelect').value;
             const response = await fetch(API_URL, {
@@ -589,7 +584,6 @@
             }
             const data = await response.json();
             if (data.error) throw new Error(data.error);
-            // Ожидаем формат: { result: { alternatives: [ { message: { text: "..." } } ] } }
             return data.result.alternatives[0].message.text;
         }
 
@@ -626,7 +620,7 @@
             }
         }
 
-        // === RESULT ACTIONS ===
+        // === RESULT ===
         function insertResultIntoEditor() {
             if (!lastResult) return;
             const editor = document.getElementById('editor');
@@ -753,9 +747,10 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="flex gap-2 mt-2">
+                <div class="flex gap-2 mt-2 flex-wrap">
                     <button onclick="addTableRow()" class="btn-secondary text-gray-600 text-[11px] font-semibold py-1.5 px-3 rounded-lg">➕ Добавить строку</button>
                     <button onclick="exportTable()" class="btn-secondary text-gray-600 text-[11px] font-semibold py-1.5 px-3 rounded-lg">📋 Копировать</button>
+                    <button onclick="insertTableIntoEditor()" class="btn-primary text-white text-[11px] font-semibold py-1.5 px-3 rounded-lg">↩ Вставить в текст</button>
                 </div>
             `;
         }
@@ -778,6 +773,13 @@
             navigator.clipboard.writeText(text).then(() => alert('Таблица скопирована в буфер обмена (TSV).'));
         }
 
+        function insertTableIntoEditor() {
+            const table = document.getElementById('dynamicTable');
+            if (!table) return;
+            document.getElementById('editor').innerHTML += '<br>' + table.outerHTML;
+            updateStats();
+        }
+
         function insertImage() {
             const output = document.getElementById('toolOutput');
             output.innerHTML = `
@@ -796,12 +798,14 @@
             const reader = new FileReader();
             reader.onload = (e) => {
                 const preview = document.getElementById('imagePreview');
+                const dataUrl = e.target.result;
                 preview.innerHTML = `
-                    <img src="${e.target.result}" class="max-w-full rounded-lg border border-gray-200" style="max-height: 200px;">
+                    <img src="${dataUrl}" class="max-w-full rounded-lg border border-gray-200" style="max-height: 200px;">
                     <div class="flex gap-2 mt-2">
-                        <button onclick="insertImageIntoEditor('${e.target.result}')" class="btn-primary text-white text-[11px] font-semibold py-1.5 px-3 rounded-lg">↩ Вставить в текст</button>
+                        <button onclick="insertImageIntoEditor(window._lastImage)" class="btn-primary text-white text-[11px] font-semibold py-1.5 px-3 rounded-lg">↩ Вставить в текст</button>
                     </div>
                 `;
+                window._lastImage = dataUrl;
             };
             reader.readAsDataURL(file);
         }
@@ -871,6 +875,7 @@
                 document.getElementById('resultStepName').textContent = 'Аннотация';
                 document.getElementById('resultContent').textContent = result;
                 document.getElementById('resultCard').style.display = 'block';
+                document.getElementById('resultCard').classList.add('fade-in');
             } catch (e) {
                 alert('Ошибка: ' + e.message);
             } finally {
@@ -881,6 +886,7 @@
         // === INIT ===
         renderSteps();
         updateStats();
+        updateModelBadge();
     </script>
 </body>
 </html>
