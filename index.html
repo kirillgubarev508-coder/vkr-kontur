@@ -5,223 +5,415 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ВКР-Контур — платформа сопровождения выпускной работы</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html-docx-js/0.3.1/html-docx.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         * { font-family: 'Inter', sans-serif; }
-        body {
-            background: #f8fafc;
-            min-height: 100vh;
-        }
+        body { background: #f1f5f9; min-height: 100vh; }
         .gradient-header {
-            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #a855f7 100%);
-            position: relative;
-            overflow: hidden;
+            background: linear-gradient(135deg, #1e1b4b 0%, #4f46e5 45%, #7c3aed 100%);
+            position: relative; overflow: hidden;
         }
         .gradient-header::before {
-            content: '';
-            position: absolute;
-            top: -50%;
-            right: -20%;
-            width: 600px;
-            height: 600px;
-            background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
+            content: ''; position: absolute; top: -40%; right: -10%;
+            width: 500px; height: 500px;
+            background: radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 70%);
             border-radius: 50%;
         }
         .gradient-header::after {
-            content: '';
-            position: absolute;
-            bottom: -60%;
-            left: -10%;
-            width: 500px;
-            height: 500px;
-            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            content: ''; position: absolute; bottom: -50%; left: -5%;
+            width: 400px; height: 400px;
+            background: radial-gradient(circle, rgba(168,85,247,0.15) 0%, transparent 70%);
             border-radius: 50%;
         }
-        .card {
-            background: rgba(255, 255, 255, 0.8);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.6);
-            box-shadow: 0 8px 32px rgba(79, 70, 229, 0.08), 0 2px 8px rgba(0,0,0,0.04);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 16px 48px rgba(79, 70, 229, 0.15), 0 4px 12px rgba(0,0,0,0.06);
+        .glass {
+            background: rgba(255,255,255,0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255,255,255,0.7);
+            box-shadow: 0 8px 32px rgba(79,70,229,0.07);
         }
         .btn-primary {
             background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(79, 70, 229, 0.35);
+            transition: all 0.25s ease;
+            box-shadow: 0 4px 15px rgba(79,70,229,0.3);
         }
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(79, 70, 229, 0.45);
-        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(79,70,229,0.4); }
         .btn-primary:active { transform: translateY(0); }
-        .btn-secondary {
-            background: #f1f5f9;
+        .btn-primary:disabled { opacity: 0.5; transform: none; cursor: not-allowed; }
+        .btn-secondary { background: #e2e8f0; transition: all 0.25s ease; }
+        .btn-secondary:hover { background: #cbd5e1; }
+        .step-item {
+            display: flex; align-items: flex-start; gap: 12px;
+            padding: 10px 12px; border-radius: 12px;
+            cursor: pointer; transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+        .step-item:hover { background: #f1f5f9; }
+        .step-item.active { background: #ede9fe; border-color: #c4b5fd; }
+        .step-item.done .step-num { background: #10b981; color: white; }
+        .step-item.done .step-label { color: #059669; }
+        .step-item.running .step-num { background: #f59e0b; color: white; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .step-num {
+            width: 28px; height: 28px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px; font-weight: 700;
+            background: #e2e8f0; color: #64748b; flex-shrink: 0;
             transition: all 0.3s ease;
         }
-        .btn-secondary:hover {
-            background: #e2e8f0;
+        .step-item.active .step-num { background: #7c3aed; color: white; }
+        .step-label { font-size: 13px; font-weight: 500; color: #475569; line-height: 1.3; }
+        .step-desc { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+        .editor-toolbar {
+            display: flex; flex-wrap: wrap; gap: 4px;
+            padding: 8px; background: #f8fafc;
+            border-radius: 10px; border: 1px solid #e2e8f0;
         }
-        .step-circle {
-            width: 40px;
-            height: 40px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 16px;
-            flex-shrink: 0;
+        .toolbar-btn {
+            width: 32px; height: 32px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; cursor: pointer; transition: all 0.15s;
+            background: white; border: 1px solid #e2e8f0; color: #475569;
         }
-        .step-1 { background: linear-gradient(135deg, #dbeafe, #bfdbfe); color: #1d4ed8; }
-        .step-2 { background: linear-gradient(135deg, #dcfce7, #bbf7d0); color: #15803d; }
-        .step-3 { background: linear-gradient(135deg, #fef3c7, #fde68a); color: #b45309; }
-        textarea:focus {
-            outline: none;
-            border-color: #7c3aed;
-            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+        .toolbar-btn:hover { background: #ede9fe; border-color: #c4b5fd; color: #7c3aed; }
+        .toolbar-divider { width: 1px; background: #e2e8f0; margin: 4px 2px; }
+        .editor-area {
+            min-height: 400px; max-height: 600px; overflow-y: auto;
+            padding: 20px; font-size: 14px; line-height: 1.8;
+            color: #1e293b; outline: none;
         }
-        .loading-spinner {
-            border: 3px solid #e2e8f0;
-            border-top: 3px solid #7c3aed;
-            border-radius: 50%;
-            width: 28px;
-            height: 28px;
+        .editor-area:focus { box-shadow: inset 0 0 0 2px rgba(124,58,237,0.1); }
+        .editor-area h1 { font-size: 22px; font-weight: 800; margin: 16px 0 8px; color: #1e1b4b; }
+        .editor-area h2 { font-size: 18px; font-weight: 700; margin: 14px 0 6px; color: #1e1b4b; }
+        .editor-area h3 { font-size: 16px; font-weight: 600; margin: 12px 0 4px; color: #1e1b4b; }
+        .editor-area p { margin: 8px 0; }
+        .editor-area ul, .editor-area ol { margin: 8px 0; padding-left: 24px; }
+        .editor-area li { margin: 4px 0; }
+        .editor-area blockquote {
+            border-left: 3px solid #7c3aed; padding-left: 12px;
+            margin: 12px 0; color: #64748b; font-style: italic;
+        }
+        .result-box {
+            background: #f8fafc; border: 1px solid #e2e8f0;
+            border-radius: 12px; padding: 16px;
+            font-size: 13px; line-height: 1.7; color: #334155;
+            max-height: 400px; overflow-y: auto;
+        }
+        .loading-overlay {
+            position: fixed; inset: 0; background: rgba(255,255,255,0.7);
+            backdrop-filter: blur(4px); display: none;
+            align-items: center; justify-content: center; z-index: 100;
+        }
+        .loading-overlay.active { display: flex; }
+        .spinner {
+            border: 4px solid #e2e8f0; border-top: 4px solid #7c3aed;
+            border-radius: 50%; width: 40px; height: 40px;
             animation: spin 0.8s linear infinite;
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .fade-in {
-            animation: fadeIn 0.5s ease-out;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(12px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .fade-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .progress-bar { height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #4f46e5, #7c3aed); border-radius: 2px; transition: width 0.5s ease; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .itmo-logo { display: flex; align-items: center; gap: 10px; }
+        .itmo-logo svg { height: 40px; width: auto; }
         .badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 4px 12px;
-            border-radius: 9999px;
-            font-size: 12px;
-            font-weight: 600;
-            letter-spacing: 0.02em;
+            display: inline-flex; align-items: center; padding: 3px 10px;
+            border-radius: 9999px; font-size: 11px; font-weight: 600;
         }
-        .badge-purple { background: #ede9fe; color: #6d28d9; }
-        .badge-blue { background: #dbeafe; color: #1d4ed8; }
-        .badge-green { background: #dcfce7; color: #15803d; }
+        .stat-card {
+            background: white; border-radius: 12px; padding: 12px;
+            border: 1px solid #e2e8f0; text-align: center;
+        }
+        .stat-value { font-size: 20px; font-weight: 800; color: #1e1b4b; }
+        .stat-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
     </style>
 </head>
 <body>
 
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="flex flex-col items-center gap-4">
+            <div class="spinner"></div>
+            <p class="text-sm text-gray-500 font-medium" id="loadingText">Обрабатываем...</p>
+        </div>
+    </div>
+
     <!-- Header -->
     <header class="gradient-header text-white">
-        <div class="max-w-4xl mx-auto px-4 py-10 md:py-14 relative z-10">
-            <div class="flex items-center gap-3 mb-4">
-                <span class="text-3xl">📄</span>
-                <span class="badge" style="background: rgba(255,255,255,0.2); color: #fff; backdrop-filter: blur(4px);">MVP • Yandex AI Studio</span>
+        <div class="max-w-7xl mx-auto px-4 py-6 md:py-8 relative z-10">
+            <div class="flex items-center justify-between flex-wrap gap-4">
+                <div class="itmo-logo">
+                    <!-- ITMO Logo SVG -->
+                    <svg viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <line x1="20" y1="20" x2="45" y2="8" stroke="rgba(255,255,255,0.4)" stroke-width="0.8"/>
+                        <line x1="20" y1="20" x2="45" y2="32" stroke="rgba(255,255,255,0.4)" stroke-width="0.8"/>
+                        <line x1="45" y1="8" x2="70" y2="20" stroke="rgba(255,255,255,0.3)" stroke-width="0.8"/>
+                        <line x1="45" y1="32" x2="70" y2="20" stroke="rgba(255,255,255,0.3)" stroke-width="0.8"/>
+                        <line x1="70" y1="20" x2="90" y2="12" stroke="rgba(255,255,255,0.2)" stroke-width="0.8"/>
+                        <line x1="70" y1="20" x2="90" y2="28" stroke="rgba(255,255,255,0.2)" stroke-width="0.8"/>
+                        <circle cx="20" cy="20" r="4" fill="#ff4d4d"/>
+                        <circle cx="45" cy="8" r="3" fill="white" opacity="0.9"/>
+                        <circle cx="45" cy="32" r="3" fill="white" opacity="0.9"/>
+                        <circle cx="70" cy="20" r="3.5" fill="white"/>
+                        <circle cx="90" cy="12" r="2.5" fill="white" opacity="0.7"/>
+                        <circle cx="90" cy="28" r="2.5" fill="white" opacity="0.7"/>
+                        <text x="100" y="25" fill="white" font-size="16" font-weight="800" font-family="Inter, sans-serif">ITMO</text>
+                    </svg>
+                    <div class="h-8 w-px bg-white/20"></div>
+                    <div>
+                        <h1 class="text-lg md:text-xl font-extrabold tracking-tight leading-none">ВКР-Контур</h1>
+                        <p class="text-white/60 text-[11px] mt-0.5">Платформа сопровождения ВКР</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="badge" style="background:rgba(255,255,255,0.15);color:#fff;">YandexGPT 5 Lite</span>
+                    <button onclick="exportDocx()" class="btn-secondary text-gray-700 text-xs font-semibold py-2 px-4 rounded-lg">💾 Скачать .docx</button>
+                    <button onclick="exportTxt()" class="btn-secondary text-gray-700 text-xs font-semibold py-2 px-4 rounded-lg">📄 Скачать .txt</button>
+                </div>
             </div>
-            <h1 class="text-3xl md:text-4xl font-extrabold mb-2 tracking-tight">ВКР-Контур</h1>
-            <p class="text-white/80 text-base md:text-lg max-w-xl">Платформа полного цикла сопровождения выпускной квалификационной работы — от черновика до защиты.</p>
         </div>
     </header>
 
-    <main class="max-w-4xl mx-auto px-4 py-8 -mt-6 relative z-20">
+    <!-- Main Layout -->
+    <main class="max-w-7xl mx-auto px-4 py-6">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-        <!-- Welcome Card -->
-        <div class="card rounded-2xl p-6 md:p-8 mb-6 fade-in" id="welcomeCard">
-            <div class="flex items-start gap-4 mb-6">
-                <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xl flex-shrink-0">👋</div>
-                <div>
-                    <h2 class="text-xl font-bold text-gray-900 mb-1">Добро пожаловать!</h2>
-                    <p class="text-gray-500 text-sm">Этот инструмент поможет вам пройти путь от черновика до готовой работы. Мы разобьём процесс на шаги и будем вести вас по ним.</p>
+            <!-- Left Column: Editor & Stats -->
+            <div class="lg:col-span-8 space-y-4">
+                <!-- Stats -->
+                <div class="grid grid-cols-3 gap-3 fade-in">
+                    <div class="stat-card">
+                        <div class="stat-value" id="statChars">0</div>
+                        <div class="stat-label">Символов</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statWords">0</div>
+                        <div class="stat-label">Слов</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="statSteps">0/14</div>
+                        <div class="stat-label">Шагов выполнено</div>
+                    </div>
+                </div>
+
+                <!-- Upload Card -->
+                <div class="glass rounded-2xl p-5 fade-in">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-sm font-bold text-gray-800">📄 Исходный документ</h2>
+                        <div class="flex items-center gap-2">
+                            <label for="docxUpload" class="btn-primary text-white text-xs font-semibold py-2 px-4 rounded-lg cursor-pointer">
+                                📎 Загрузить .docx
+                            </label>
+                            <input type="file" id="docxUpload" accept=".docx" class="hidden" onchange="handleDocxUpload(event)">
+                            <button onclick="clearEditor()" class="btn-secondary text-gray-600 text-xs font-semibold py-2 px-4 rounded-lg">🗑 Очистить</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 text-[11px] text-gray-400 mb-3">
+                        <span id="fileName">Файл не загружен</span>
+                        <span id="fileSize"></span>
+                    </div>
+                </div>
+
+                <!-- Editor Card -->
+                <div class="glass rounded-2xl overflow-hidden fade-in">
+                    <div class="px-5 pt-4 pb-2 flex items-center justify-between">
+                        <h2 class="text-sm font-bold text-gray-800">✏️ Редактор текста</h2>
+                        <span class="text-[11px] text-gray-400" id="wordCount">0 символов</span>
+                    </div>
+                    <div class="px-5 pb-2">
+                        <div class="editor-toolbar">
+                            <button class="toolbar-btn" onclick="formatDoc('bold')" title="Жирный"><b>B</b></button>
+                            <button class="toolbar-btn" onclick="formatDoc('italic')" title="Курсив"><i>I</i></button>
+                            <button class="toolbar-btn" onclick="formatDoc('underline')" title="Подчёркнутый"><u>U</u></button>
+                            <div class="toolbar-divider"></div>
+                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','h1')" title="Заголовок 1">H1</button>
+                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','h2')" title="Заголовок 2">H2</button>
+                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','h3')" title="Заголовок 3">H3</button>
+                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','p')" title="Обычный текст">¶</button>
+                            <div class="toolbar-divider"></div>
+                            <button class="toolbar-btn" onclick="formatDoc('insertUnorderedList')" title="Маркированный список">•</button>
+                            <button class="toolbar-btn" onclick="formatDoc('insertOrderedList')" title="Нумерованный список">1.</button>
+                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','blockquote')" title="Цитата">❝</button>
+                            <div class="toolbar-divider"></div>
+                            <button class="toolbar-btn" onclick="formatDoc('undo')" title="Отменить">↶</button>
+                            <button class="toolbar-btn" onclick="formatDoc('redo')" title="Повторить">↷</button>
+                        </div>
+                    </div>
+                    <div class="px-5 pb-5">
+                        <div id="editor" class="editor-area" contenteditable="true" spellcheck="true" oninput="updateStats()">
+                            <h1>Введение</h1>
+                            <p>Вставьте текст вашей выпускной квалификационной работы или загрузите <strong>.docx</strong> файл. Редактор поддерживает форматирование, списки, заголовки и цитаты.</p>
+                            <p>Выберите шаг пайплайна в правой колонке и нажмите <strong>«Применить шаг»</strong> — нейросеть обработает текст и вернёт результат. Шаги можно выполнять многократно.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Result Card -->
+                <div class="glass rounded-2xl p-5 fade-in" id="resultCard" style="display:none;">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-sm font-bold text-gray-800">📊 Результат шага: <span id="resultStepName" class="text-purple-600"></span></h2>
+                        <button onclick="document.getElementById('resultCard').style.display='none'" class="text-gray-400 hover:text-gray-600 text-lg">×</button>
+                    </div>
+                    <div id="resultContent" class="result-box whitespace-pre-wrap"></div>
+                    <div class="flex gap-2 mt-3">
+                        <button onclick="insertResultIntoEditor()" class="btn-primary text-white text-xs font-semibold py-2 px-4 rounded-lg">↩ Вставить в редактор</button>
+                        <button onclick="copyResult()" class="btn-secondary text-gray-600 text-xs font-semibold py-2 px-4 rounded-lg">📋 Копировать</button>
+                        <button onclick="appendResultToEditor()" class="btn-secondary text-gray-600 text-xs font-semibold py-2 px-4 rounded-lg">➕ Добавить в конец</button>
+                    </div>
                 </div>
             </div>
-            <div class="bg-indigo-50/80 border border-indigo-100 rounded-xl p-4 mb-6">
-                <p class="text-sm text-indigo-700">💡 <strong>Как это работает:</strong> Вставьте текст вашей работы или его фрагмент — нейросеть проанализирует его и предложит улучшения.</p>
-            </div>
-            <button onclick="showStep1()" class="btn-primary text-white font-semibold py-3.5 px-8 rounded-xl w-full md:w-auto text-sm tracking-wide">Начать работу →</button>
-        </div>
 
-        <!-- Step 1: Input -->
-        <div id="step1" class="card rounded-2xl p-6 md:p-8 mb-6 hidden fade-in">
-            <div class="flex items-center gap-3 mb-6">
-                <div class="step-circle step-1">1</div>
-                <div>
-                    <h2 class="text-lg font-bold text-gray-900">Загрузка черновика</h2>
-                    <p class="text-gray-400 text-xs">Шаг 1 из 3</p>
+            <!-- Right Column: Pipeline -->
+            <div class="lg:col-span-4 space-y-4">
+                <div class="glass rounded-2xl p-5 fade-in">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-sm font-bold text-gray-800">🗺️ Пайплайн</h2>
+                        <span class="text-[11px] text-gray-400" id="progressText">0 / 14</span>
+                    </div>
+                    <div class="progress-bar mb-4"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+                    <div class="space-y-1" id="stepsList"></div>
                 </div>
-            </div>
-            <p class="text-gray-500 text-sm mb-4">Вставьте текст вашей работы (можно фрагмент — введение, главу или раздел):</p>
-            <textarea id="draftText" rows="10" class="w-full border border-gray-200 rounded-xl p-4 text-sm text-gray-700 placeholder-gray-300 resize-y transition-all duration-200" placeholder="Вставьте сюда текст вашей работы..."></textarea>
-            
-            <div class="mt-4">
-                <label class="block text-sm font-medium text-gray-600 mb-2">Требования к работе <span class="text-gray-400 font-normal">(опционально)</span></label>
-                <textarea id="requirements" rows="3" class="w-full border border-gray-200 rounded-xl p-4 text-sm text-gray-700 placeholder-gray-300 resize-y transition-all duration-200" placeholder="Например: ГОСТ 7.32-2017, объём 50 страниц, шрифт Times New Roman 14 пт..."></textarea>
-            </div>
 
-            <button onclick="startDiagnostics()" class="btn-primary text-white font-semibold py-3.5 px-8 rounded-xl w-full mt-5 text-sm tracking-wide">🔍 Запустить диагностику</button>
-            <div class="loading hidden mt-5 items-center justify-center gap-3" id="loading1">
-                <div class="loading-spinner"></div>
-                <span class="text-gray-500 text-sm">Анализируем текст...</span>
-            </div>
-        </div>
-
-        <!-- Step 2: Results -->
-        <div id="step2" class="card rounded-2xl p-6 md:p-8 mb-6 hidden fade-in">
-            <div class="flex items-center gap-3 mb-6">
-                <div class="step-circle step-2">2</div>
-                <div>
-                    <h2 class="text-lg font-bold text-gray-900">Результаты диагностики</h2>
-                    <p class="text-gray-400 text-xs">Шаг 2 из 3</p>
+                <!-- Action Card -->
+                <div class="glass rounded-2xl p-5 fade-in">
+                    <h2 class="text-sm font-bold text-gray-800 mb-3">⚡ Действие</h2>
+                    <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-3 mb-3">
+                        <p class="text-[12px] text-indigo-700">Выбранный шаг: <strong id="selectedStepName">—</strong></p>
+                    </div>
+                    <button id="applyBtn" onclick="applyStep()" class="btn-primary text-white font-semibold py-3 px-6 rounded-xl w-full text-sm" disabled>Применить шаг</button>
+                    <button onclick="resetAll()" class="btn-secondary text-gray-600 font-semibold py-2.5 px-6 rounded-xl w-full text-xs mt-2">Сбросить всё</button>
                 </div>
-            </div>
-            <div id="diagnosticsResult" class="bg-gray-50 border border-gray-100 rounded-xl p-5 mb-6 min-h-[100px] text-gray-700 text-sm leading-relaxed whitespace-pre-wrap"></div>
-            <div class="flex flex-col md:flex-row gap-3">
-                <button onclick="improveText()" class="btn-primary text-white font-semibold py-3.5 px-8 rounded-xl flex-1 text-sm tracking-wide">✍️ Улучшить текст</button>
-                <button onclick="resetApp()" class="btn-secondary text-gray-600 font-semibold py-3.5 px-8 rounded-xl flex-1 text-sm tracking-wide">🔄 Новая работа</button>
-            </div>
-        </div>
 
-        <!-- Step 3: Improved -->
-        <div id="step3" class="card rounded-2xl p-6 md:p-8 mb-6 hidden fade-in">
-            <div class="flex items-center gap-3 mb-6">
-                <div class="step-circle step-3">3</div>
-                <div>
-                    <h2 class="text-lg font-bold text-gray-900">Улучшенный текст</h2>
-                    <p class="text-gray-400 text-xs">Шаг 3 из 3</p>
+                <!-- Info Card -->
+                <div class="glass rounded-2xl p-5 fade-in">
+                    <h2 class="text-sm font-bold text-gray-800 mb-3">ℹ️ О платформе</h2>
+                    <div class="space-y-2 text-[12px] text-gray-500 leading-relaxed">
+                        <p>• <strong>Не пишет работу вместо вас.</strong> Платформа предлагает доработки, а решение принимаете вы.</p>
+                        <p>• <strong>Проверяемые источники.</strong> Только DOI и реальные базы данных.</p>
+                        <p>• <strong>Паспорт авторства.</strong> Фиксация версий и AI-вклада для защиты от ложных срабатываний детекторов.</p>
+                        <p class="text-[11px] text-gray-400 pt-2 border-t border-gray-100">MVP • Yandex AI Studio • Университет ИТМО</p>
+                    </div>
                 </div>
-            </div>
-            <div id="improvedResult" class="bg-gray-50 border border-gray-100 rounded-xl p-5 mb-6 min-h-[100px] text-gray-700 text-sm leading-relaxed whitespace-pre-wrap"></div>
-            <div class="flex flex-col md:flex-row gap-3">
-                <button onclick="copyText()" class="btn-primary text-white font-semibold py-3.5 px-8 rounded-xl flex-1 text-sm tracking-wide">📋 Копировать текст</button>
-                <button onclick="resetApp()" class="btn-secondary text-gray-600 font-semibold py-3.5 px-8 rounded-xl flex-1 text-sm tracking-wide">🔄 Новая работа</button>
             </div>
         </div>
     </main>
 
-    <footer class="text-center py-8 text-gray-400 text-xs">
-        <p>ВКР-Контур MVP • Работает на Yandex AI Studio</p>
-    </footer>
-
     <script>
+        // === CONFIG ===
         const API_URL = 'https://d5dvt9csk3t8rstmokg8.g2n58e0c.apigw.yandexcloud.net/';
 
-        function showStep1() {
-            document.getElementById('welcomeCard').classList.add('hidden');
-            const el = document.getElementById('step1');
-            el.classList.remove('hidden');
-            el.classList.add('fade-in');
+        // === PIPELINE STEPS (все 14 шагов из вашего ТЗ) ===
+        const STEPS = [
+            { id: 0, label: 'Загрузка и профиль', desc: 'Анализ структуры, объёма, глав', prompt: 'Проанализируй структуру следующего текста ВКР: определи наличие введения, глав, заключения, оцени объём и готовность. Укажи явные пробелы.\n\nТекст:\n{text}' },
+            { id: 1, label: 'Требования научрука', desc: 'Превращение замечаний в чек-лист', prompt: 'Преобразуй следующие требования и замечания в структурированный чек-лист с приоритетами и сроками.\n\nТребования:\n{text}' },
+            { id: 2, label: 'Валидация источников', desc: 'Проверка DOI, Crossref, OpenAlex', prompt: 'Проверь следующие источники: укажи, какие выглядят валидными, какие сомнительными, какие могли быть выдуманы. Объясни критерии.\n\nСписок:\n{text}' },
+            { id: 3, label: 'Анализ источниковой базы', desc: 'Карта литературы, пробелы', prompt: 'Проанализируй источниковую базу текста: выдели основных авторов, методы, противоречия, устаревшие блоки. Предложи, что добавить.\n\nТекст:\n{text}' },
+            { id: 4, label: 'Доработка текста', desc: 'Усиление аргументации', prompt: 'Улучши следующий текст: усиль аргументацию, убери неподтверждённые утверждения, перепиши слабые места в академическом стиле.\n\nТекст:\n{text}' },
+            { id: 5, label: 'Подбор источников', desc: 'Новые релевантные работы', prompt: 'Предложи 5-7 дополнительных научных источников по теме текста. Для каждого укажи автора, год, название, DOI (если есть) и поясни, зачем он нужен.\n\nТекст:\n{text}' },
+            { id: 6, label: 'Интеграция источников', desc: 'Встраивание в обзор и выводы', prompt: 'На основе следующего текста предложи, как интегрировать новые источники в обзор литературы, методы и выводы. Дай конкретные формулировки.\n\nТекст:\n{text}' },
+            { id: 7, label: 'Научная новизна', desc: 'Отличие от конкурентов', prompt: 'Сформулируй черновик раздела о научной новизне: в чём отличие данной работы от существующих, какие пробелы она закрывает.\n\nТекст:\n{text}' },
+            { id: 8, label: 'Язык и структура', desc: 'Логика, связность, стиль', prompt: 'Проверь логику, связность и академический стиль текста. Предложи правки для аннотации, введения и выводов.\n\nТекст:\n{text}' },
+            { id: 9, label: 'ГОСТ и требования', desc: 'Стили, поля, нумерация', prompt: 'Проверь текст на соответствие ГОСТ 7.32-2017: оформление заголовков, нумерация, таблицы, рисунки, список литературы. Выдай список нарушений.\n\nТекст:\n{text}' },
+            { id: 10, label: 'Авторство и AI-след', desc: 'Паспорт авторства', prompt: 'Составь паспорт авторства для данного текста: зафиксируй структуру, ключевые тезисы, объём. Отметь, какие фрагменты могли быть сгенерированы AI.\n\nТекст:\n{text}' },
+            { id: 11, label: 'Подготовка к защите', desc: 'Речь, слайды, вопросы', prompt: 'Подготовь комплект для защиты: тезисы речи (2-3 минуты), структуру слайдов (8-10), вероятные вопросы комиссии и слабые места работы.\n\nТекст:\n{text}' },
+            { id: 12, label: 'Публикация (опционально)', desc: 'Журнал, cover letter', prompt: 'Подбери подходящий журнал (ВАК/Scopus) для публикации по теме текста. Составь черновик cover letter и оцени риск отказа.\n\nТекст:\n{text}' },
+            { id: 13, label: 'Финальный пакет', desc: 'Готовая работа + отчёт', prompt: 'Собери итоговый отчёт по работе: что сделано, какие шаги пройдены, какие результаты достигнуты, что осталось. Сформируй финальный чек-лист.\n\nТекст:\n{text}' },
+        ];
+
+        let selectedStepId = null;
+        let lastResult = '';
+        let completedSteps = new Set();
+        let runningStepId = null;
+
+        // === RENDER STEPS ===
+        function renderSteps() {
+            const list = document.getElementById('stepsList');
+            list.innerHTML = STEPS.map(s => `
+                <div class="step-item ${completedSteps.has(s.id) ? 'done' : ''} ${selectedStepId === s.id ? 'active' : ''} ${runningStepId === s.id ? 'running' : ''}"
+                     onclick="selectStep(${s.id})" id="step-${s.id}">
+                    <div class="step-num">${completedSteps.has(s.id) ? '✓' : (runningStepId === s.id ? '...' : s.id)}</div>
+                    <div>
+                        <div class="step-label">${s.label}</div>
+                        <div class="step-desc">${s.desc}</div>
+                    </div>
+                </div>
+            `).join('');
+            updateProgress();
+            updateStats();
         }
 
+        function selectStep(id) {
+            selectedStepId = id;
+            const step = STEPS.find(s => s.id === id);
+            document.getElementById('selectedStepName').textContent = step.label;
+            document.getElementById('applyBtn').disabled = false;
+            renderSteps();
+        }
+
+        function updateProgress() {
+            const done = completedSteps.size;
+            const total = STEPS.length;
+            document.getElementById('progressText').textContent = `${done} / ${total}`;
+            document.getElementById('progressFill').style.width = `${(done / total) * 100}%`;
+        }
+
+        // === EDITOR FUNCTIONS ===
+        function formatDoc(cmd, val) {
+            document.execCommand(cmd, false, val || null);
+            document.getElementById('editor').focus();
+        }
+
+        function updateStats() {
+            const text = document.getElementById('editor').innerText || '';
+            const chars = text.length;
+            const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+            document.getElementById('statChars').textContent = chars.toLocaleString('ru-RU');
+            document.getElementById('statWords').textContent = words.toLocaleString('ru-RU');
+            document.getElementById('statSteps').textContent = `${completedSteps.size}/${STEPS.length}`;
+            document.getElementById('wordCount').textContent = chars + ' символов';
+        }
+
+        function clearEditor() {
+            document.getElementById('editor').innerHTML = '<p>Вставьте текст...</p>';
+            document.getElementById('fileName').textContent = 'Файл не загружен';
+            document.getElementById('fileSize').textContent = '';
+            updateStats();
+        }
+
+        // === DOCX UPLOAD ===
+        async function handleDocxUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileSize').textContent = `(${(file.size / 1024).toFixed(1)} КБ)`;
+
+            showLoading('Извлекаем текст из .docx...');
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const result = await mammoth.convertToHtml({ arrayBuffer });
+                document.getElementById('editor').innerHTML = result.value;
+                updateStats();
+                if (result.messages.length) {
+                    console.warn('Mammoth warnings:', result.messages);
+                }
+            } catch (e) {
+                alert('Ошибка чтения .docx: ' + e.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // === API CALL ===
         async function callYandexGPT(prompt) {
             const response = await fetch(API_URL, {
                 method: 'POST',
@@ -230,92 +422,106 @@
                     messages: [{ role: 'user', text: prompt }]
                 })
             });
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errText}`);
+            }
             const data = await response.json();
             if (data.error) throw new Error(data.error);
             return data.result.alternatives[0].message.text;
         }
 
-        async function startDiagnostics() {
-            const text = document.getElementById('draftText').value.trim();
-            if (!text) { alert('Пожалуйста, вставьте текст работы.'); return; }
-            
-            document.getElementById('loading1').classList.remove('hidden');
-            document.getElementById('loading1').classList.add('flex');
-            document.querySelector('#step1 button').disabled = true;
-            document.querySelector('#step1 button').style.opacity = '0.6';
+        // === APPLY STEP (можно выполнять многократно) ===
+        async function applyStep() {
+            if (selectedStepId === null) return;
+            const step = STEPS.find(s => s.id === selectedStepId);
+            const text = document.getElementById('editor').innerText.trim();
+            if (!text) { alert('Введите текст работы.'); return; }
 
+            runningStepId = selectedStepId;
+            renderSteps();
+            showLoading(`Шаг ${step.id}: ${step.label}...`);
             try {
-                const prompt = `Ты — опытный научный руководитель. Проанализируй следующий текст выпускной квалификационной работы и дай краткую диагностику:
-1. Структура (есть ли введение, главы, заключение)
-2. Основные проблемы (логика, аргументация, стиль)
-3. Что улучшить в первую очередь
-
-Текст работы:
-${text}
-
-Требования:
-${document.getElementById('requirements').value || 'Стандартные требования ГОСТ'}
-
-Ответ дай кратко, по пунктам, на русском языке.`;
-
+                const prompt = step.prompt.replace('{text}', text);
                 const result = await callYandexGPT(prompt);
-                document.getElementById('diagnosticsResult').innerText = result;
-                document.getElementById('step1').classList.add('hidden');
-                const el = document.getElementById('step2');
-                el.classList.remove('hidden');
-                el.classList.add('fade-in');
+                lastResult = result;
+                document.getElementById('resultStepName').textContent = step.label;
+                document.getElementById('resultContent').textContent = result;
+                document.getElementById('resultCard').style.display = 'block';
+                document.getElementById('resultCard').classList.add('fade-in');
+                completedSteps.add(selectedStepId);
+                updateProgress();
+                updateStats();
             } catch (e) {
                 alert('Ошибка: ' + e.message);
             } finally {
-                document.getElementById('loading1').classList.add('hidden');
-                document.getElementById('loading1').classList.remove('flex');
-                document.querySelector('#step1 button').disabled = false;
-                document.querySelector('#step1 button').style.opacity = '1';
+                runningStepId = null;
+                renderSteps();
+                hideLoading();
             }
         }
 
-        async function improveText() {
-            const text = document.getElementById('draftText').value.trim();
-            document.getElementById('step2').classList.add('hidden');
-            const el = document.getElementById('step3');
-            el.classList.remove('hidden');
-            el.classList.add('fade-in');
-            document.getElementById('improvedResult').innerText = 'Обрабатываем...';
-
-            try {
-                const prompt = `Ты — опытный редактор научных текстов. Улучши следующий текст выпускной квалификационной работы:
-- Исправь стилистические ошибки
-- Улучши логику изложения
-- Добавь академический тон
-- Сохрани смысл и структуру
-
-Текст:
-${text}
-
-Верни только улучшенный текст, без комментариев.`;
-
-                const result = await callYandexGPT(prompt);
-                document.getElementById('improvedResult').innerText = result;
-            } catch (e) {
-                document.getElementById('improvedResult').innerText = 'Ошибка: ' + e.message;
-            }
+        // === RESULT ACTIONS ===
+        function insertResultIntoEditor() {
+            if (!lastResult) return;
+            const editor = document.getElementById('editor');
+            editor.innerHTML += '<hr style="border-color:#e2e8f0;margin:16px 0;">' + lastResult.replace(/\n/g, '<br>');
+            updateStats();
         }
 
-        function copyText() {
-            const text = document.getElementById('improvedResult').innerText;
-            navigator.clipboard.writeText(text).then(() => alert('Текст скопирован!'));
+        function appendResultToEditor() {
+            if (!lastResult) return;
+            const editor = document.getElementById('editor');
+            editor.innerHTML += '<p>' + lastResult.replace(/\n/g, '<br>') + '</p>';
+            updateStats();
         }
 
-        function resetApp() {
-            document.getElementById('step1').classList.add('hidden');
-            document.getElementById('step2').classList.add('hidden');
-            document.getElementById('step3').classList.add('hidden');
-            const el = document.getElementById('welcomeCard');
-            el.classList.remove('hidden');
-            el.classList.add('fade-in');
-            document.getElementById('draftText').value = '';
-            document.getElementById('requirements').value = '';
+        function copyResult() {
+            if (!lastResult) return;
+            navigator.clipboard.writeText(lastResult).then(() => alert('Скопировано!'));
         }
+
+        // === EXPORT ===
+        function exportDocx() {
+            const content = document.getElementById('editor').innerHTML;
+            const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:'Times New Roman',serif;font-size:14pt;line-height:1.5;}h1{font-size:18pt;}h2{font-size:16pt;}h3{font-size:14pt;}</style></head><body>${content}</body></html>`;
+            const blob = htmlDocx.asBlob(html);
+            saveAs(blob, 'vkr-kontur.docx');
+        }
+
+        function exportTxt() {
+            const text = document.getElementById('editor').innerText;
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            saveAs(blob, 'vkr-kontur.txt');
+        }
+
+        // === RESET ===
+        function resetAll() {
+            completedSteps.clear();
+            selectedStepId = null;
+            lastResult = '';
+            document.getElementById('resultCard').style.display = 'none';
+            document.getElementById('selectedStepName').textContent = '—';
+            document.getElementById('applyBtn').disabled = true;
+            document.getElementById('editor').innerHTML = '<h1>Введение</h1><p>Вставьте текст вашей выпускной квалификационной работы или загрузите <strong>.docx</strong> файл.</p>';
+            document.getElementById('fileName').textContent = 'Файл не загружен';
+            document.getElementById('fileSize').textContent = '';
+            updateStats();
+            renderSteps();
+        }
+
+        // === LOADING ===
+        function showLoading(text) {
+            document.getElementById('loadingText').textContent = text || 'Обрабатываем...';
+            document.getElementById('loadingOverlay').classList.add('active');
+        }
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.remove('active');
+        }
+
+        // === INIT ===
+        renderSteps();
+        updateStats();
     </script>
 </body>
 </html>
