@@ -142,9 +142,8 @@
     <main class="max-w-7xl mx-auto px-3 py-4">
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
 
-            <!-- ЛЕВАЯ КОЛОНКА (главная область: редактор + материалы рядом) -->
+            <!-- ЛЕВАЯ КОЛОНКА -->
             <div class="lg:col-span-8 space-y-3">
-                <!-- Статистика -->
                 <div class="grid grid-cols-4 gap-2 fade-in">
                     <div class="stat-card"><div class="stat-value" id="statChars">0</div><div class="stat-label">Символов</div></div>
                     <div class="stat-card"><div class="stat-value" id="statWords">0</div><div class="stat-label">Слов</div></div>
@@ -152,7 +151,6 @@
                     <div class="stat-card"><div class="stat-value" id="statSteps">0/15</div><div class="stat-label">Шагов</div></div>
                 </div>
 
-                <!-- Загрузка DOCX -->
                 <div class="glass rounded-2xl p-3 fade-in">
                     <div class="flex items-center justify-between">
                         <h2 class="text-xs font-bold text-gray-800">📄 Исходный документ</h2>
@@ -165,9 +163,8 @@
                     <div class="flex items-center gap-2 text-[10px] text-gray-400 mt-1"><span id="fileName">Файл не загружен</span><span id="fileSize"></span></div>
                 </div>
 
-                <!-- РЕДАКТОР + МАТЕРИАЛЫ РЯДОМ -->
+                <!-- РЕДАКТОР + МАТЕРИАЛЫ -->
                 <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
-                    <!-- Редактор (широкий) -->
                     <div class="lg:col-span-8">
                         <div class="glass rounded-2xl overflow-hidden fade-in h-full">
                             <div class="px-4 pt-3 pb-1 flex items-center justify-between">
@@ -206,7 +203,6 @@
                         </div>
                     </div>
 
-                    <!-- Материалы (узкая колонка справа от редактора) -->
                     <div class="lg:col-span-4">
                         <div class="glass rounded-2xl p-3 fade-in h-full">
                             <h2 class="text-xs font-bold text-gray-800 mb-2">📎 Материалы работы</h2>
@@ -239,7 +235,7 @@
                 </div>
             </div>
 
-            <!-- ПРАВАЯ КОЛОНКА (пайплайн) -->
+            <!-- ПРАВАЯ КОЛОНКА -->
             <div class="lg:col-span-4 space-y-3">
                 <div class="glass rounded-2xl p-4 fade-in">
                     <div class="flex items-center justify-between mb-3">
@@ -304,7 +300,7 @@
     </main>
 
     <script>
-        const API_URL = 'https://d5d37c8mt9t2v19cbku9.g2n58e0c.apigw.yandexcloud.net';
+        const WS_URL = 'wss://d5d37c8mt9t2v19cbku9.g2n58e0c.apigw.yandexcloud.net/ws';
 
         // === ПАЙПЛАЙН ===
         const STEPS = [
@@ -317,40 +313,37 @@
             { id: 2, label: 'Материалы работы', desc: 'Учёт таблиц, изображений, данных',
               prompt: 'Ты редактор научных текстов. Проанализируй прикреплённые материалы и текст. Вставь данные из таблиц в соответствующие места текста как markdown-таблицы. Опиши изображения как рисунки с номерами и подписями. Убедись, что данные не противоречат содержанию работы.\n\nФОРМАТ ОТВЕТА СТРОГО:\nКОММЕНТАРИЙ: <одно короткое предложение, что добавлено>\nТЕКСТ:\n<полный обновлённый текст работы без сокращений>\n\nТекст:\n{text}',
               fileUpload: false, edit: true, repeatable: true },
-            { id: 3, label: 'Валидация источников', desc: 'Проверка DOI, Crossref',
-              prompt: 'Ты эксперт по научным источникам. Проверь список: укажи валидные, сомнительные, выдуманные. Объясни критерии.\n\nСписок:\n{text}',
-              fileUpload: true, edit: false, repeatable: true },
-            { id: 4, label: 'Анализ источниковой базы', desc: 'Карта литературы',
-              prompt: 'Ты аналитик. Проанализируй источниковую базу: основные авторы, методы, противоречия, устаревшие блоки.\n\nТекст:\n{text}',
-              fileUpload: false, edit: false },
-            { id: 5, label: 'Доработка текста', desc: 'Усиление аргументации',
+            { id: 3, label: 'Анализ источников', desc: 'Отбор релевантных источников',
+              prompt: 'Ты эксперт по научным источникам. Проанализируй список источников в тексте. Оставь только те, что относятся к теме, открываются по DOI и актуальны. Удали сомнительные и нерелевантные.\n\nФОРМАТ ОТВЕТА СТРОГО:\nКОММЕНТАРИЙ: <какие источники оставлены и почему, какие удалены и почему>\nТЕКСТ:\n<полный текст с обновлённым списком литературы>\n\nТекст:\n{text}',
+              fileUpload: false, edit: true, repeatable: true },
+            { id: 4, label: 'Доработка текста', desc: 'Усиление аргументации',
               prompt: 'Ты опытный научный редактор. Улучши текст: усиль аргументацию, убери неподтверждённые утверждения, перепиши слабые места в академическом стиле.\n\nФОРМАТ ОТВЕТА СТРОГО:\nКОММЕНТАРИЙ: <одно короткое предложение, что изменено>\nТЕКСТ:\n<полный итоговый текст без сокращений>\n\nТекст:\n{text}',
               fileUpload: false, edit: true, repeatable: true },
-            { id: 6, label: 'Подбор источников', desc: 'Новые релевантные работы',
-              prompt: 'Ты научный консультант. Предложи 5-7 источников по теме. Для каждого: автор, год, название, DOI, зачем нужен.\n\nТекст:\n{text}',
-              fileUpload: false, edit: false },
-            { id: 7, label: 'Интеграция источников', desc: 'Встраивание в обзор',
+            { id: 5, label: 'Подбор источников', desc: 'Новые релевантные работы',
+              prompt: 'Ты научный консультант. Предложи 5-7 источников по теме. Для каждого: автор, год, название, DOI, зачем нужен. Вставь их в список литературы.\n\nФОРМАТ ОТВЕТА СТРОГО:\nКОММЕНТАРИЙ: <какие источники добавлены и почему>\nТЕКСТ:\n<полный текст с обновлённым списком литературы>\n\nТекст:\n{text}',
+              fileUpload: false, edit: true, repeatable: true },
+            { id: 6, label: 'Интеграция источников', desc: 'Встраивание в обзор',
               prompt: 'Ты научный редактор. Интегрируй новые источники в обзор литературы и выводы.\n\nФОРМАТ ОТВЕТА СТРОГО:\nКОММЕНТАРИЙ: <что добавлено>\nТЕКСТ:\n<полный итоговый текст>\n\nТекст:\n{text}',
               fileUpload: false, edit: true, repeatable: true },
-            { id: 8, label: 'Научная новизна', desc: 'Отличие от конкурентов',
-              prompt: 'Ты научный консультант. Сформулируй раздел о научной новизне: в чём отличие работы, какие пробелы закрывает.\n\nТекст:\n{text}',
-              fileUpload: false, edit: false },
-            { id: 9, label: 'Язык и структура', desc: 'Логика, стиль',
+            { id: 7, label: 'Научная новизна', desc: 'Отличие от конкурентов',
+              prompt: 'Ты научный консультант. Сформулируй раздел о научной новизне: в чём отличие работы, какие пробелы закрывает. Внеси правки в текст.\n\nФОРМАТ ОТВЕТА СТРОГО:\nКОММЕНТАРИЙ: <что изменено>\nТЕКСТ:\n<полный итоговый текст>\n\nТекст:\n{text}',
+              fileUpload: false, edit: true, repeatable: true },
+            { id: 8, label: 'Язык и структура', desc: 'Логика, стиль',
               prompt: 'Ты корректор академических текстов. Проверь логику, связность, стиль. Перепиши слабые места.\n\nФОРМАТ ОТВЕТА СТРОГО:\nКОММЕНТАРИЙ: <что изменено>\nТЕКСТ:\n<полный итоговый текст>\n\nТекст:\n{text}',
               fileUpload: false, edit: true, repeatable: true },
-            { id: 10, label: 'ГОСТ и требования', desc: 'Оформление по ГОСТ',
+            { id: 9, label: 'ГОСТ и требования', desc: 'Оформление по ГОСТ',
               prompt: 'Ты нормоконтролёр. Проверь текст на соответствие ГОСТ 7.32-2017: заголовки, нумерация, таблицы, рисунки, список литературы. Если прикреплён файл с требованиями кафедры — учти его.\n\nФОРМАТ ОТВЕТА:\nКОММЕНТАРИЙ: <кратко, что исправлено>\nТЕКСТ:\n<полный итоговый текст с исправленным оформлением>\n\nТекст:\n{text}',
               fileUpload: true, edit: true, repeatable: true },
-            { id: 11, label: 'Авторство и AI-след', desc: 'Паспорт авторства',
-              prompt: 'Ты эксперт по академической этике. Составь паспорт авторства: структура, ключевые тезисы, объём. Отметь фрагменты, которые могли быть сгенерированы AI.\n\nТекст:\n{text}',
-              fileUpload: false, edit: false },
-            { id: 12, label: 'Подготовка к защите', desc: 'Речь, слайды, вопросы',
+            { id: 10, label: 'Авторство и AI-след', desc: 'Паспорт авторства',
+              prompt: 'Ты эксперт по академической этике. Проанализируй работу: составь паспорт авторства, отметь фрагменты, которые могли быть сгенерированы AI. Внеси правки в текст.\n\nФОРМАТ ОТВЕТА СТРОГО:\nКОММЕНТАРИЙ: <что изменено>\nТЕКСТ:\n<полный итоговый текст>\n\nТекст:\n{text}',
+              fileUpload: false, edit: true, repeatable: true },
+            { id: 11, label: 'Подготовка к защите', desc: 'Речь, слайды, вопросы',
               prompt: 'Ты опытный научный руководитель. Подготовь комплект для защиты: тезисы речи (2-3 минуты), структуру слайдов (8-10), вероятные вопросы и слабые места.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
-            { id: 13, label: 'Публикация', desc: 'Журнал, cover letter',
+            { id: 12, label: 'Публикация', desc: 'Журнал, cover letter',
               prompt: 'Ты научный консультант. Подбери журнал (ВАК/Scopus) для публикации. Составь черновик cover letter, оцени риск отказа.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
-            { id: 14, label: 'Финальный пакет', desc: 'Итоговый отчёт',
+            { id: 13, label: 'Финальный пакет', desc: 'Итоговый отчёт',
               prompt: 'Ты научный консультант. Собери итоговый отчёт: что сделано, какие шаги пройдены, какие результаты. Финальный чек-лист.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
         ];
@@ -361,6 +354,67 @@
         let stepFileContent = '';
         let attachments = [];
         let lastFeedbackText = '';
+        let ws = null;
+        let wsReady = false;
+        let currentResolve = null;
+
+        // === WEBSOCKET ===
+        function connectWebSocket() {
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                wsReady = true;
+                showToast('Соединение установлено', 'success');
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'processing') {
+                        document.getElementById('editorProgressText').textContent = data.message;
+                    } else if (data.type === 'result') {
+                        if (currentResolve) {
+                            currentResolve(data.text);
+                            currentResolve = null;
+                        }
+                    } else if (data.type === 'error') {
+                        if (currentResolve) {
+                            currentResolve(Promise.reject(new Error(data.error)));
+                            currentResolve = null;
+                        }
+                    }
+                } catch (e) { console.error('WS parse error:', e); }
+            };
+
+            ws.onclose = () => {
+                wsReady = false;
+                showToast('Соединение потеряно, переподключение...', 'error');
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onerror = (e) => { console.error('WS error:', e); };
+        }
+
+        async function callLLMWebSocket(prompt, model) {
+            return new Promise((resolve, reject) => {
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    reject(new Error('WebSocket не подключён'));
+                    return;
+                }
+                currentResolve = resolve;
+                ws.send(JSON.stringify({
+                    model: model,
+                    messages: [{ role: 'user', text: prompt }]
+                }));
+
+                setTimeout(() => {
+                    if (currentResolve) {
+                        currentResolve = null;
+                        reject(new Error('Превышено время ожидания (5 минут)'));
+                    }
+                }, 300000);
+            });
+        }
 
         // === ATTACHMENTS ===
         function handleAttachmentUpload(event) {
@@ -417,7 +471,6 @@
             renderAttachments();
         }
 
-        // Drag & Drop
         const dropZone = document.getElementById('dropZone');
         ['dragenter', 'dragover'].forEach(evt => {
             dropZone.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -434,8 +487,7 @@
         function updateModelBadge() {
             const select = document.getElementById('modelSelect');
             const text = select.options[select.selectedIndex].textContent;
-            const shortName = text.split('—')[0].trim();
-            document.getElementById('currentModelBadge').textContent = shortName;
+            document.getElementById('currentModelBadge').textContent = text.split('—')[0].trim();
         }
 
         // === RENDER ===
@@ -531,71 +583,34 @@
             else stepFileContent = '';
         }
 
-        // === API ===
-        async function callLLM(prompt) {
-            const selectedModel = document.getElementById('modelSelect').value;
-            const response = await fetch(API_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: selectedModel, messages: [{ role: 'user', text: prompt }] })
-            });
-            if (!response.ok) {
-                const errText = await response.text();
-                let errorMessage = `HTTP ${response.status}`;
-                try { const errData = JSON.parse(errText); errorMessage = errData.error || errData.message || errorMessage; } catch (e) {}
-                throw new Error(errorMessage);
-            }
-            const data = await response.json();
-            if (data.error) throw new Error(data.error);
-            return data.result.alternatives[0].message.text;
-        }
-
         // === ОЧИСТКА ОТ РАЗМЫШЛЕНИЙ ===
         function stripThinking(text) {
             if (!text) return text;
-            // Убираем <think>...</think>, <reasoning>...</reasoning>, <reflection>...</reflection> и подобные
             let cleaned = text;
             cleaned = cleaned.replace(/<think[\s\S]*?<\/think>/gi, '');
             cleaned = cleaned.replace(/<reasoning[\s\S]*?<\/reasoning>/gi, '');
             cleaned = cleaned.replace(/<reflection[\s\S]*?<\/reflection>/gi, '');
             cleaned = cleaned.replace(/<analysis[\s\S]*?<\/analysis>/gi, '');
-            // Убираем блоки "Размышления: ..." в начале
             cleaned = cleaned.replace(/^(Размышлени[ея][\s\S]*?)(?=\n\n|КОММЕНТАРИЙ|ТЕКСТ)/i, '');
             return cleaned.trim();
         }
 
-        // === ПАРСИНГ ОТВЕТА ===
+        // === ПАРСИНГ ===
         function parseResponse(raw, isEdit) {
             const clean = stripThinking(raw);
+            if (!isEdit) return { comment: '', text: clean };
 
-            if (!isEdit) {
-                return { comment: '', text: clean };
-            }
-
-            // Ищем КОММЕНТАРИЙ и ТЕКСТ
             const commentRegex = /КОММЕНТАРИЙ\s*:?\s*([\s\S]*?)(?=\n\s*ТЕКСТ\s*:|$)/i;
             const textRegex = /ТЕКСТ\s*:?\s*([\s\S]*)$/i;
-
             const cMatch = clean.match(commentRegex);
             const tMatch = clean.match(textRegex);
 
             let comment = '';
             let text = clean;
-
             if (cMatch && cMatch[1].trim()) comment = cMatch[1].trim();
             if (tMatch && tMatch[1].trim()) text = tMatch[1].trim();
-
-            // Если не нашли ТЕКСТ, но результат большой — используем всё как текст
-            if (!tMatch && clean.length > 200) {
-                text = clean;
-                comment = comment || 'Текст обновлён.';
-            }
-
-            // Если текст оказался слишком коротким или похож на чек-лист — оставляем оригинал
-            if (text.length < 100 && clean.length > 200) {
-                text = clean;
-            }
-
+            if (!tMatch && clean.length > 200) { text = clean; comment = comment || 'Текст обновлён.'; }
+            if (text.length < 100 && clean.length > 200) text = clean;
             return { comment, text };
         }
 
@@ -609,12 +624,12 @@
                     const preview = String(att.data).substring(0, 2500);
                     ctx += preview + (String(att.data).length > 2500 ? '\n...(сокращено)' : '') + '\n';
                 } else if (att.type === 'image') {
-                    ctx += '(Изображение. Опиши его как рисунок с номером в нужном месте работы.)\n';
+                    ctx += '(Изображение. Опиши его как рисунок с номером.)\n';
                 } else if (att.type === 'xlsx') {
                     ctx += '(Табличные данные. Вставь как markdown-таблицу.)\n';
                 }
             });
-            ctx += '\nОбязательно: таблицы вставляй как markdown-таблицы, изображения — как рисунки с подписями. Данные должны соответствовать содержанию работы.\n';
+            ctx += '\nОбязательно: таблицы вставляй как markdown-таблицы, изображения — как рисунки с подписями.\n';
             return ctx;
         }
 
@@ -628,7 +643,6 @@
 
             runningStepId = selectedStepId; renderSteps();
 
-            // Показываем инлайн-прогресс в редакторе для edit-шагов
             if (step.edit) {
                 document.getElementById('editorProgress').style.display = 'flex';
                 document.getElementById('editorProgressText').textContent = `Применяем правки: ${step.label}...`;
@@ -640,11 +654,10 @@
                 let fullPrompt = step.prompt.replace('{text}', text);
                 if (attachments.length > 0) fullPrompt += buildAttachmentsContext();
 
-                const raw = await callLLM(fullPrompt);
+                const raw = await callLLMWebSocket(fullPrompt, document.getElementById('modelSelect').value);
                 const parsed = parseResponse(raw, step.edit);
 
                 if (step.edit) {
-                    // Обновляем текст редактора
                     const editor = document.getElementById('editor');
                     if (parsed.text && parsed.text.length > 50) {
                         editor.innerHTML = parsed.text.replace(/\n/g, '<br>');
@@ -653,11 +666,10 @@
                         updateStats();
                     }
 
-                    // Показываем краткий комментарий
                     document.getElementById('feedbackTitle').textContent = `✏️ ${step.label}`;
                     document.getElementById('feedbackBadge').textContent = 'Правки применены';
                     document.getElementById('feedbackBadge').className = 'badge-edit';
-                    document.getElementById('feedbackContent').textContent = parsed.comment || 'Текст обновлён. Правки применены к документу.';
+                    document.getElementById('feedbackContent').textContent = parsed.comment || 'Текст обновлён.';
                     document.getElementById('feedbackCard').className = 'glass rounded-2xl p-4 fade-in feedback-card edit';
                     document.getElementById('feedbackCard').style.display = 'block';
                     document.getElementById('feedbackActions').style.display = 'none';
@@ -735,6 +747,7 @@
         function hideLoading() { document.getElementById('loadingOverlay').classList.remove('active'); }
 
         // === INIT ===
+        connectWebSocket();
         renderSteps(); updateStats(); updateModelBadge(); renderAttachments();
     </script>
 </body>
