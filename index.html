@@ -41,7 +41,7 @@
         .toolbar-btn { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 13px; cursor: pointer; transition: all 0.15s; background: white; border: 1px solid #e2e8f0; color: #475569; }
         .toolbar-btn:hover { background: #ede9fe; border-color: #c4b5fd; color: #7c3aed; }
         .toolbar-divider { width: 1px; background: #e2e8f0; margin: 4px 2px; }
-        .editor-area { min-height: 380px; max-height: 520px; overflow-y: auto; padding: 16px; font-size: 13px; line-height: 1.8; color: #1e293b; outline: none; transition: background 0.6s ease; }
+        .editor-area { min-height: 420px; max-height: 620px; overflow-y: auto; padding: 16px; font-size: 13px; line-height: 1.8; color: #1e293b; outline: none; transition: background 0.6s ease; }
         .editor-area:focus { box-shadow: inset 0 0 0 2px rgba(124,58,237,0.1); }
         .editor-area h1 { font-size: 20px; font-weight: 800; margin: 14px 0 6px; color: #1e1b4b; }
         .editor-area h2 { font-size: 17px; font-weight: 700; margin: 12px 0 5px; color: #1e1b4b; }
@@ -67,18 +67,18 @@
         .stat-card { background: white; border-radius: 12px; padding: 10px; border: 1px solid #e2e8f0; text-align: center; }
         .stat-value { font-size: 18px; font-weight: 800; color: #1e1b4b; }
         .stat-label { font-size: 9px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
-        .file-drop-zone { border: 2px dashed #cbd5e1; border-radius: 12px; padding: 16px; text-align: center; transition: all 0.2s ease; cursor: pointer; background: #fafbfc; }
+        .file-drop-zone { border: 2px dashed #cbd5e1; border-radius: 12px; padding: 14px; text-align: center; transition: all 0.2s ease; cursor: pointer; background: #fafbfc; }
         .file-drop-zone:hover { border-color: #7c3aed; background: #faf5ff; }
         .file-drop-zone.dragover { border-color: #7c3aed; background: #ede9fe; }
-        .attachment-card { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: white; border: 1px solid #e2e8f0; transition: all 0.2s; }
+        .attachment-card { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: white; border: 1px solid #e2e8f0; transition: all 0.2s; }
         .attachment-card:hover { border-color: #c4b5fd; box-shadow: 0 4px 12px rgba(79,70,229,0.08); }
-        .attachment-preview { width: 48px; height: 48px; border-radius: 10px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; overflow: hidden; }
-        .attachment-preview img { width: 100%; height: 100%; object-fit: cover; border-radius: 10px; }
+        .attachment-preview { width: 40px; height: 40px; border-radius: 8px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; overflow: hidden; }
+        .attachment-preview img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
         .attachment-info { flex: 1; min-width: 0; }
-        .attachment-name { font-size: 12px; font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .attachment-meta { font-size: 10px; color: #94a3b8; margin-top: 2px; }
-        .attachment-type-badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 9px; font-weight: 600; background: #ede9fe; color: #6d28d9; margin-left: 6px; }
-        .attachment-remove { cursor: pointer; color: #94a3b8; font-size: 16px; padding: 4px 8px; border-radius: 6px; transition: all 0.15s; flex-shrink: 0; }
+        .attachment-name { font-size: 11px; font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .attachment-meta { font-size: 9px; color: #94a3b8; margin-top: 1px; }
+        .attachment-type-badge { display: inline-block; padding: 1px 5px; border-radius: 4px; font-size: 8px; font-weight: 600; background: #ede9fe; color: #6d28d9; margin-left: 4px; }
+        .attachment-remove { cursor: pointer; color: #94a3b8; font-size: 14px; padding: 2px 6px; border-radius: 4px; transition: all 0.15s; flex-shrink: 0; }
         .attachment-remove:hover { color: #ef4444; background: #fef2f2; }
         .feedback-card { border-left: 4px solid #4f46e5; }
         .feedback-card.edit { border-left-color: #10b981; }
@@ -90,6 +90,9 @@
         .toast-info { background: #4f46e5; }
         .badge-info { background: #e0e7ff; color: #4338ca; padding: 2px 8px; border-radius: 9999px; font-size: 10px; font-weight: 600; }
         .badge-edit { background: #d1fae5; color: #047857; padding: 2px 8px; border-radius: 9999px; font-size: 10px; font-weight: 600; }
+        .progress-inline { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #7c3aed; padding: 8px; background: #f5f3ff; border-radius: 8px; margin-top: 8px; }
+        .progress-inline .dot { width: 8px; height: 8px; border-radius: 50%; background: #7c3aed; animation: pulse-dot 1.2s infinite; }
+        @keyframes pulse-dot { 0%, 100% { opacity: 0.4; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.2); } }
     </style>
 </head>
 <body>
@@ -139,8 +142,9 @@
     <main class="max-w-7xl mx-auto px-3 py-4">
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
 
-            <!-- ЛЕВАЯ КОЛОНКА -->
+            <!-- ЛЕВАЯ КОЛОНКА (главная область: редактор + материалы рядом) -->
             <div class="lg:col-span-8 space-y-3">
+                <!-- Статистика -->
                 <div class="grid grid-cols-4 gap-2 fade-in">
                     <div class="stat-card"><div class="stat-value" id="statChars">0</div><div class="stat-label">Символов</div></div>
                     <div class="stat-card"><div class="stat-value" id="statWords">0</div><div class="stat-label">Слов</div></div>
@@ -148,8 +152,9 @@
                     <div class="stat-card"><div class="stat-value" id="statSteps">0/15</div><div class="stat-label">Шагов</div></div>
                 </div>
 
-                <div class="glass rounded-2xl p-4 fade-in">
-                    <div class="flex items-center justify-between mb-2">
+                <!-- Загрузка DOCX -->
+                <div class="glass rounded-2xl p-3 fade-in">
+                    <div class="flex items-center justify-between">
                         <h2 class="text-xs font-bold text-gray-800">📄 Исходный документ</h2>
                         <div class="flex items-center gap-2">
                             <label for="docxUpload" class="btn-primary text-white text-[11px] font-semibold py-1.5 px-3 rounded-lg cursor-pointer">📎 Загрузить .docx</label>
@@ -157,58 +162,68 @@
                             <button onclick="clearEditor()" class="btn-secondary text-gray-600 text-[11px] font-semibold py-1.5 px-3 rounded-lg">🗑 Очистить</button>
                         </div>
                     </div>
-                    <div class="flex items-center gap-2 text-[10px] text-gray-400"><span id="fileName">Файл не загружен</span><span id="fileSize"></span></div>
+                    <div class="flex items-center gap-2 text-[10px] text-gray-400 mt-1"><span id="fileName">Файл не загружен</span><span id="fileSize"></span></div>
                 </div>
 
-                <div class="glass rounded-2xl overflow-hidden fade-in">
-                    <div class="px-4 pt-3 pb-1 flex items-center justify-between">
-                        <h2 class="text-xs font-bold text-gray-800">✏️ Редактор текста</h2>
-                        <span class="text-[10px] text-gray-400" id="wordCount">0 символов</span>
-                    </div>
-                    <div class="px-4 pb-1">
-                        <div class="editor-toolbar">
-                            <button class="toolbar-btn" onclick="formatDoc('bold')"><b>B</b></button>
-                            <button class="toolbar-btn" onclick="formatDoc('italic')"><i>I</i></button>
-                            <button class="toolbar-btn" onclick="formatDoc('underline')"><u>U</u></button>
-                            <div class="toolbar-divider"></div>
-                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','h1')">H1</button>
-                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','h2')">H2</button>
-                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','h3')">H3</button>
-                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','p')">¶</button>
-                            <div class="toolbar-divider"></div>
-                            <button class="toolbar-btn" onclick="formatDoc('insertUnorderedList')">•</button>
-                            <button class="toolbar-btn" onclick="formatDoc('insertOrderedList')">1.</button>
-                            <button class="toolbar-btn" onclick="formatDoc('formatBlock','blockquote')">❝</button>
-                            <div class="toolbar-divider"></div>
-                            <button class="toolbar-btn" onclick="formatDoc('undo')">↶</button>
-                            <button class="toolbar-btn" onclick="formatDoc('redo')">↷</button>
+                <!-- РЕДАКТОР + МАТЕРИАЛЫ РЯДОМ -->
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+                    <!-- Редактор (широкий) -->
+                    <div class="lg:col-span-8">
+                        <div class="glass rounded-2xl overflow-hidden fade-in h-full">
+                            <div class="px-4 pt-3 pb-1 flex items-center justify-between">
+                                <h2 class="text-xs font-bold text-gray-800">✏️ Редактор текста</h2>
+                                <span class="text-[10px] text-gray-400" id="wordCount">0 символов</span>
+                            </div>
+                            <div class="px-4 pb-1">
+                                <div class="editor-toolbar">
+                                    <button class="toolbar-btn" onclick="formatDoc('bold')"><b>B</b></button>
+                                    <button class="toolbar-btn" onclick="formatDoc('italic')"><i>I</i></button>
+                                    <button class="toolbar-btn" onclick="formatDoc('underline')"><u>U</u></button>
+                                    <div class="toolbar-divider"></div>
+                                    <button class="toolbar-btn" onclick="formatDoc('formatBlock','h1')">H1</button>
+                                    <button class="toolbar-btn" onclick="formatDoc('formatBlock','h2')">H2</button>
+                                    <button class="toolbar-btn" onclick="formatDoc('formatBlock','h3')">H3</button>
+                                    <button class="toolbar-btn" onclick="formatDoc('formatBlock','p')">¶</button>
+                                    <div class="toolbar-divider"></div>
+                                    <button class="toolbar-btn" onclick="formatDoc('insertUnorderedList')">•</button>
+                                    <button class="toolbar-btn" onclick="formatDoc('insertOrderedList')">1.</button>
+                                    <button class="toolbar-btn" onclick="formatDoc('formatBlock','blockquote')">❝</button>
+                                    <div class="toolbar-divider"></div>
+                                    <button class="toolbar-btn" onclick="formatDoc('undo')">↶</button>
+                                    <button class="toolbar-btn" onclick="formatDoc('redo')">↷</button>
+                                </div>
+                            </div>
+                            <div class="px-4 pb-4">
+                                <div id="editor" class="editor-area" contenteditable="true" spellcheck="true" oninput="updateStats()">
+                                    <h1>Введение</h1>
+                                    <p>Вставьте текст вашей выпускной квалификационной работы или загрузите <strong>.docx</strong> файл.</p>
+                                </div>
+                                <div id="editorProgress" class="progress-inline" style="display:none;">
+                                    <div class="dot"></div>
+                                    <span id="editorProgressText">Обрабатываем правки...</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="px-4 pb-4">
-                        <div id="editor" class="editor-area" contenteditable="true" spellcheck="true" oninput="updateStats()">
-                            <h1>Введение</h1>
-                            <p>Вставьте текст вашей выпускной квалификационной работы или загрузите <strong>.docx</strong> файл.</p>
+
+                    <!-- Материалы (узкая колонка справа от редактора) -->
+                    <div class="lg:col-span-4">
+                        <div class="glass rounded-2xl p-3 fade-in h-full">
+                            <h2 class="text-xs font-bold text-gray-800 mb-2">📎 Материалы работы</h2>
+                            <p class="text-[10px] text-gray-400 mb-3">Изображения, таблицы, данные</p>
+
+                            <div class="file-drop-zone" id="dropZone" onclick="document.getElementById('attachmentInput').click()">
+                                <p class="text-[11px] text-gray-600 font-medium mb-1">📥 Перетащите файлы</p>
+                                <p class="text-[9px] text-gray-400">PNG, CSV, JSON, TXT, XLSX</p>
+                            </div>
+                            <input type="file" id="attachmentInput" class="hidden" multiple accept="image/*,.csv,.json,.txt,.xlsx,.xls" onchange="handleAttachmentUpload(event)">
+
+                            <div id="attachmentsList" class="mt-3 space-y-2"></div>
                         </div>
                     </div>
                 </div>
 
-                <!-- МАТЕРИАЛЫ РАБОТЫ -->
-                <div class="glass rounded-2xl p-4 fade-in">
-                    <div class="flex items-center justify-between mb-3">
-                        <h2 class="text-xs font-bold text-gray-800">📎 Материалы работы</h2>
-                        <span class="text-[10px] text-gray-400">Изображения, таблицы, данные</span>
-                    </div>
-
-                    <div class="file-drop-zone" id="dropZone" onclick="document.getElementById('attachmentInput').click()">
-                        <p class="text-[12px] text-gray-600 font-medium mb-1">📥 Перетащите файлы сюда или нажмите для выбора</p>
-                        <p class="text-[10px] text-gray-400">Изображения, .csv, .json, .txt, .xlsx</p>
-                    </div>
-                    <input type="file" id="attachmentInput" class="hidden" multiple accept="image/*,.csv,.json,.txt,.xlsx,.xls" onchange="handleAttachmentUpload(event)">
-
-                    <div id="attachmentsList" class="mt-3 space-y-2"></div>
-                </div>
-
-                <!-- ОБРАТНАЯ СВЯЗЬ -->
+                <!-- Обратная связь -->
                 <div class="glass rounded-2xl p-4 fade-in" id="feedbackCard" style="display:none;">
                     <div class="flex items-center justify-between mb-2">
                         <div class="flex items-center gap-2">
@@ -224,7 +239,7 @@
                 </div>
             </div>
 
-            <!-- ПРАВАЯ КОЛОНКА -->
+            <!-- ПРАВАЯ КОЛОНКА (пайплайн) -->
             <div class="lg:col-span-4 space-y-3">
                 <div class="glass rounded-2xl p-4 fade-in">
                     <div class="flex items-center justify-between mb-3">
@@ -291,51 +306,52 @@
     <script>
         const API_URL = 'https://d5d37c8mt9t2v19cbku9.g2n58e0c.apigw.yandexcloud.net';
 
+        // === ПАЙПЛАЙН ===
         const STEPS = [
             { id: 0, label: 'Загрузка и профиль', desc: 'Анализ структуры, объёма, глав',
-              prompt: 'Проанализируй структуру следующего текста ВКР: определи наличие введения, глав, заключения, оцени объём и готовность. Укажи явные пробелы.\n\nТекст:\n{text}',
+              prompt: 'Ты опытный научный руководитель. Проанализируй структуру ВКР: наличие введения, глав, заключения, оцени объём и готовность. Укажи явные пробелы.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
-            { id: 1, label: 'Требования научрука', desc: 'Превращение замечаний в чек-лист',
-              prompt: 'Преобразуй следующие требования и замечания в структурированный чек-лист с приоритетами и сроками.\n\nТребования:\n{text}',
+            { id: 1, label: 'Требования научрука', desc: 'Чек-лист замечаний',
+              prompt: 'Ты научный руководитель. Преобразуй требования и замечания в чек-лист с приоритетами и сроками. Отвечай строго по делу, без размышлений.\n\nТребования:\n{text}',
               fileUpload: true, edit: false, repeatable: true },
             { id: 2, label: 'Материалы работы', desc: 'Учёт таблиц, изображений, данных',
-              prompt: 'Проанализируй прикреплённые материалы и текст работы. Вставь данные из таблиц в соответствующие места текста как markdown-таблицы, опиши изображения как рисунки с номерами и подписями, убедись, что данные не противоречат содержанию работы. Сначала напиши "КОММЕНТАРИЙ: <кратко что добавлено>", затем "ТЕКСТ:" и далее полный обновлённый текст.\n\nТекст:\n{text}',
+              prompt: 'Ты редактор научных текстов. Проанализируй прикреплённые материалы и текст. Вставь данные из таблиц в соответствующие места текста как markdown-таблицы. Опиши изображения как рисунки с номерами и подписями. Убедись, что данные не противоречат содержанию работы.\n\nФОРМАТ ОТВЕТА СТРОГО:\nКОММЕНТАРИЙ: <одно короткое предложение, что добавлено>\nТЕКСТ:\n<полный обновлённый текст работы без сокращений>\n\nТекст:\n{text}',
               fileUpload: false, edit: true, repeatable: true },
-            { id: 3, label: 'Валидация источников', desc: 'Проверка DOI, Crossref, OpenAlex',
-              prompt: 'Проверь следующие источники: укажи, какие выглядят валидными, какие сомнительными, какие могли быть выдуманы.\n\nСписок:\n{text}',
-              fileUpload: true, edit: false },
-            { id: 4, label: 'Анализ источниковой базы', desc: 'Карта литературы, пробелы',
-              prompt: 'Проанализируй источниковую базу текста: выдели основных авторов, методы, противоречия, устаревшие блоки.\n\nТекст:\n{text}',
+            { id: 3, label: 'Валидация источников', desc: 'Проверка DOI, Crossref',
+              prompt: 'Ты эксперт по научным источникам. Проверь список: укажи валидные, сомнительные, выдуманные. Объясни критерии.\n\nСписок:\n{text}',
+              fileUpload: true, edit: false, repeatable: true },
+            { id: 4, label: 'Анализ источниковой базы', desc: 'Карта литературы',
+              prompt: 'Ты аналитик. Проанализируй источниковую базу: основные авторы, методы, противоречия, устаревшие блоки.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
             { id: 5, label: 'Доработка текста', desc: 'Усиление аргументации',
-              prompt: 'Улучши текст: усиль аргументацию, убери неподтверждённые утверждения. Сначала напиши "КОММЕНТАРИЙ: <что изменено и почему, 2-3 предложения>", затем "ТЕКСТ:" и далее полный итоговый текст.\n\nТекст:\n{text}',
+              prompt: 'Ты опытный научный редактор. Улучши текст: усиль аргументацию, убери неподтверждённые утверждения, перепиши слабые места в академическом стиле.\n\nФОРМАТ ОТВЕТА СТРОГО:\nКОММЕНТАРИЙ: <одно короткое предложение, что изменено>\nТЕКСТ:\n<полный итоговый текст без сокращений>\n\nТекст:\n{text}',
               fileUpload: false, edit: true, repeatable: true },
             { id: 6, label: 'Подбор источников', desc: 'Новые релевантные работы',
-              prompt: 'Предложи 5-7 дополнительных научных источников по теме. Для каждого: автор, год, название, DOI, зачем нужен.\n\nТекст:\n{text}',
+              prompt: 'Ты научный консультант. Предложи 5-7 источников по теме. Для каждого: автор, год, название, DOI, зачем нужен.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
             { id: 7, label: 'Интеграция источников', desc: 'Встраивание в обзор',
-              prompt: 'Интегрируй новые источники в обзор литературы и выводы. Сначала "КОММЕНТАРИЙ: <что добавлено>", затем "ТЕКСТ:" и полный итоговый текст.\n\nТекст:\n{text}',
+              prompt: 'Ты научный редактор. Интегрируй новые источники в обзор литературы и выводы.\n\nФОРМАТ ОТВЕТА СТРОГО:\nКОММЕНТАРИЙ: <что добавлено>\nТЕКСТ:\n<полный итоговый текст>\n\nТекст:\n{text}',
               fileUpload: false, edit: true, repeatable: true },
             { id: 8, label: 'Научная новизна', desc: 'Отличие от конкурентов',
-              prompt: 'Сформулируй раздел о научной новизне: в чём отличие работы, какие пробелы закрывает.\n\nТекст:\n{text}',
+              prompt: 'Ты научный консультант. Сформулируй раздел о научной новизне: в чём отличие работы, какие пробелы закрывает.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
-            { id: 9, label: 'Язык и структура', desc: 'Логика, связность, стиль',
-              prompt: 'Проверь логику, связность, стиль. Сначала "КОММЕНТАРИЙ: <что изменено>", затем "ТЕКСТ:" и полный итоговый текст.\n\nТекст:\n{text}',
+            { id: 9, label: 'Язык и структура', desc: 'Логика, стиль',
+              prompt: 'Ты корректор академических текстов. Проверь логику, связность, стиль. Перепиши слабые места.\n\nФОРМАТ ОТВЕТА СТРОГО:\nКОММЕНТАРИЙ: <что изменено>\nТЕКСТ:\n<полный итоговый текст>\n\nТекст:\n{text}',
               fileUpload: false, edit: true, repeatable: true },
-            { id: 10, label: 'ГОСТ и требования', desc: 'Стили, поля, нумерация',
-              prompt: 'Проверь на соответствие ГОСТ 7.32-2017: заголовки, нумерация, таблицы, рисунки, список литературы. Выдай список нарушений.\n\nТекст:\n{text}',
-              fileUpload: false, edit: false, repeatable: true },
+            { id: 10, label: 'ГОСТ и требования', desc: 'Оформление по ГОСТ',
+              prompt: 'Ты нормоконтролёр. Проверь текст на соответствие ГОСТ 7.32-2017: заголовки, нумерация, таблицы, рисунки, список литературы. Если прикреплён файл с требованиями кафедры — учти его.\n\nФОРМАТ ОТВЕТА:\nКОММЕНТАРИЙ: <кратко, что исправлено>\nТЕКСТ:\n<полный итоговый текст с исправленным оформлением>\n\nТекст:\n{text}',
+              fileUpload: true, edit: true, repeatable: true },
             { id: 11, label: 'Авторство и AI-след', desc: 'Паспорт авторства',
-              prompt: 'Составь паспорт авторства: структура, ключевые тезисы, объём. Отметь фрагменты, которые могли быть сгенерированы AI.\n\nТекст:\n{text}',
+              prompt: 'Ты эксперт по академической этике. Составь паспорт авторства: структура, ключевые тезисы, объём. Отметь фрагменты, которые могли быть сгенерированы AI.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
             { id: 12, label: 'Подготовка к защите', desc: 'Речь, слайды, вопросы',
-              prompt: 'Подготовь комплект для защиты: тезисы речи (2-3 минуты), структуру слайдов (8-10), вероятные вопросы и слабые места.\n\nТекст:\n{text}',
+              prompt: 'Ты опытный научный руководитель. Подготовь комплект для защиты: тезисы речи (2-3 минуты), структуру слайдов (8-10), вероятные вопросы и слабые места.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
             { id: 13, label: 'Публикация', desc: 'Журнал, cover letter',
-              prompt: 'Подбери журнал (ВАК/Scopus) для публикации по теме. Составь черновик cover letter, оцени риск отказа.\n\nТекст:\n{text}',
+              prompt: 'Ты научный консультант. Подбери журнал (ВАК/Scopus) для публикации. Составь черновик cover letter, оцени риск отказа.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
-            { id: 14, label: 'Финальный пакет', desc: 'Готовая работа + отчёт',
-              prompt: 'Собери итоговый отчёт: что сделано, какие шаги пройдены, какие результаты достигнуты. Сформируй финальный чек-лист.\n\nТекст:\n{text}',
+            { id: 14, label: 'Финальный пакет', desc: 'Итоговый отчёт',
+              prompt: 'Ты научный консультант. Собери итоговый отчёт: что сделано, какие шаги пройдены, какие результаты. Финальный чек-лист.\n\nТекст:\n{text}',
               fileUpload: false, edit: false },
         ];
 
@@ -368,12 +384,8 @@
 
                 attachments.push({
                     id: Date.now() + Math.random(),
-                    type: type,
-                    icon: icon,
-                    typeLabel: typeLabel,
-                    name: file.name,
-                    size: file.size,
-                    data: data
+                    type, icon, typeLabel,
+                    name: file.name, size: file.size, data
                 });
                 renderAttachments();
             };
@@ -426,7 +438,7 @@
             document.getElementById('currentModelBadge').textContent = shortName;
         }
 
-        // === RENDER STEPS ===
+        // === RENDER ===
         function renderSteps() {
             const list = document.getElementById('stepsList');
             const maxUnlocked = getMaxUnlockedStep();
@@ -538,6 +550,55 @@
             return data.result.alternatives[0].message.text;
         }
 
+        // === ОЧИСТКА ОТ РАЗМЫШЛЕНИЙ ===
+        function stripThinking(text) {
+            if (!text) return text;
+            // Убираем <think>...</think>, <reasoning>...</reasoning>, <reflection>...</reflection> и подобные
+            let cleaned = text;
+            cleaned = cleaned.replace(/<think[\s\S]*?<\/think>/gi, '');
+            cleaned = cleaned.replace(/<reasoning[\s\S]*?<\/reasoning>/gi, '');
+            cleaned = cleaned.replace(/<reflection[\s\S]*?<\/reflection>/gi, '');
+            cleaned = cleaned.replace(/<analysis[\s\S]*?<\/analysis>/gi, '');
+            // Убираем блоки "Размышления: ..." в начале
+            cleaned = cleaned.replace(/^(Размышлени[ея][\s\S]*?)(?=\n\n|КОММЕНТАРИЙ|ТЕКСТ)/i, '');
+            return cleaned.trim();
+        }
+
+        // === ПАРСИНГ ОТВЕТА ===
+        function parseResponse(raw, isEdit) {
+            const clean = stripThinking(raw);
+
+            if (!isEdit) {
+                return { comment: '', text: clean };
+            }
+
+            // Ищем КОММЕНТАРИЙ и ТЕКСТ
+            const commentRegex = /КОММЕНТАРИЙ\s*:?\s*([\s\S]*?)(?=\n\s*ТЕКСТ\s*:|$)/i;
+            const textRegex = /ТЕКСТ\s*:?\s*([\s\S]*)$/i;
+
+            const cMatch = clean.match(commentRegex);
+            const tMatch = clean.match(textRegex);
+
+            let comment = '';
+            let text = clean;
+
+            if (cMatch && cMatch[1].trim()) comment = cMatch[1].trim();
+            if (tMatch && tMatch[1].trim()) text = tMatch[1].trim();
+
+            // Если не нашли ТЕКСТ, но результат большой — используем всё как текст
+            if (!tMatch && clean.length > 200) {
+                text = clean;
+                comment = comment || 'Текст обновлён.';
+            }
+
+            // Если текст оказался слишком коротким или похож на чек-лист — оставляем оригинал
+            if (text.length < 100 && clean.length > 200) {
+                text = clean;
+            }
+
+            return { comment, text };
+        }
+
         // === ATTACHMENTS CONTEXT ===
         function buildAttachmentsContext() {
             if (attachments.length === 0) return '';
@@ -550,10 +611,10 @@
                 } else if (att.type === 'image') {
                     ctx += '(Изображение. Опиши его как рисунок с номером в нужном месте работы.)\n';
                 } else if (att.type === 'xlsx') {
-                    ctx += '(Табличные данные. Вставь как markdown-таблицу в нужное место.)\n';
+                    ctx += '(Табличные данные. Вставь как markdown-таблицу.)\n';
                 }
             });
-            ctx += '\nОбязательно: таблицы вставляй как markdown-таблицы, изображения — как рисунки с подписями, данные должны соответствовать содержанию работы и не противоречить ему.\n';
+            ctx += '\nОбязательно: таблицы вставляй как markdown-таблицы, изображения — как рисунки с подписями. Данные должны соответствовать содержанию работы.\n';
             return ctx;
         }
 
@@ -566,63 +627,68 @@
             if (!text) { alert('Введите текст работы или загрузите файл.'); return; }
 
             runningStepId = selectedStepId; renderSteps();
-            showLoading(`Шаг ${step.id}: ${step.label}...`);
+
+            // Показываем инлайн-прогресс в редакторе для edit-шагов
+            if (step.edit) {
+                document.getElementById('editorProgress').style.display = 'flex';
+                document.getElementById('editorProgressText').textContent = `Применяем правки: ${step.label}...`;
+            } else {
+                showLoading(`Шаг ${step.id}: ${step.label}...`);
+            }
+
             try {
                 let fullPrompt = step.prompt.replace('{text}', text);
                 if (attachments.length > 0) fullPrompt += buildAttachmentsContext();
 
-                const result = await callLLM(fullPrompt);
+                const raw = await callLLM(fullPrompt);
+                const parsed = parseResponse(raw, step.edit);
 
                 if (step.edit) {
-                    // Парсим ответ
-                    let comment = 'Текст обновлён.';
-                    let newText = result;
-
-                    // Ищем блоки КОММЕНТАРИЙ и ТЕКСТ
-                    const commentRegex = /КОММЕНТАРИЙ\s*:\s*([\s\S]*?)(?=ТЕКСТ\s*:|$)/i;
-                    const textRegex = /ТЕКСТ\s*:\s*([\s\S]*)$/i;
-                    const cMatch = result.match(commentRegex);
-                    const tMatch = result.match(textRegex);
-
-                    if (cMatch && cMatch[1].trim()) comment = cMatch[1].trim();
-                    if (tMatch && tMatch[1].trim()) newText = tMatch[1].trim();
-
-                    // Если модель вернула чек-лист вместо текста — используем как есть
-                    if (newText.length < 50 && result.length > 100) {
-                        newText = result;
-                        comment = 'Модель вернула разбор. Проверьте текст.';
+                    // Обновляем текст редактора
+                    const editor = document.getElementById('editor');
+                    if (parsed.text && parsed.text.length > 50) {
+                        editor.innerHTML = parsed.text.replace(/\n/g, '<br>');
+                        editor.classList.add('flash-edit');
+                        setTimeout(() => editor.classList.remove('flash-edit'), 1500);
+                        updateStats();
                     }
 
-                    const editor = document.getElementById('editor');
-                    editor.innerHTML = newText.replace(/\n/g, '<br>');
-                    editor.classList.add('flash-edit');
-                    setTimeout(() => editor.classList.remove('flash-edit'), 1500);
-                    updateStats();
-
-                    // Обратная связь с комментарием
-                    document.getElementById('feedbackTitle').textContent = `✏️ Изменения: ${step.label}`;
+                    // Показываем краткий комментарий
+                    document.getElementById('feedbackTitle').textContent = `✏️ ${step.label}`;
                     document.getElementById('feedbackBadge').textContent = 'Правки применены';
                     document.getElementById('feedbackBadge').className = 'badge-edit';
-                    document.getElementById('feedbackContent').textContent = comment;
+                    document.getElementById('feedbackContent').textContent = parsed.comment || 'Текст обновлён. Правки применены к документу.';
                     document.getElementById('feedbackCard').className = 'glass rounded-2xl p-4 fade-in feedback-card edit';
                     document.getElementById('feedbackCard').style.display = 'block';
                     document.getElementById('feedbackActions').style.display = 'none';
-                    showToast('Текст обновлён', 'success');
+                    showToast('Правки применены', 'success');
                 } else {
-                    // Только информация
                     document.getElementById('feedbackTitle').textContent = `📊 ${step.label}`;
                     document.getElementById('feedbackBadge').textContent = 'Информация';
                     document.getElementById('feedbackBadge').className = 'badge-info';
-                    document.getElementById('feedbackContent').textContent = result;
+                    document.getElementById('feedbackContent').textContent = parsed.text;
                     document.getElementById('feedbackCard').className = 'glass rounded-2xl p-4 fade-in feedback-card';
                     document.getElementById('feedbackCard').style.display = 'block';
                     document.getElementById('feedbackActions').style.display = 'flex';
                 }
 
-                lastFeedbackText = result;
+                lastFeedbackText = parsed.text;
                 completedSteps.add(selectedStepId); updateProgress(); updateStats();
-            } catch (e) { showToast('Ошибка: ' + e.message, 'error'); }
-            finally { runningStepId = null; renderSteps(); hideLoading(); }
+            } catch (e) {
+                showToast('Ошибка: ' + e.message, 'error');
+                document.getElementById('feedbackTitle').textContent = '⚠️ Ошибка';
+                document.getElementById('feedbackBadge').textContent = 'Ошибка';
+                document.getElementById('feedbackBadge').className = 'badge-info';
+                document.getElementById('feedbackContent').textContent = e.message;
+                document.getElementById('feedbackCard').style.display = 'block';
+                document.getElementById('feedbackActions').style.display = 'none';
+            }
+            finally {
+                runningStepId = null;
+                renderSteps();
+                hideLoading();
+                document.getElementById('editorProgress').style.display = 'none';
+            }
         }
 
         // === FEEDBACK ACTIONS ===
@@ -661,6 +727,7 @@
             document.getElementById('fileSize').textContent = '';
             document.getElementById('fileUploadForStep').style.display = 'none';
             document.getElementById('stepFileName').textContent = '';
+            document.getElementById('editorProgress').style.display = 'none';
             renderAttachments(); updateStats(); renderSteps();
         }
 
