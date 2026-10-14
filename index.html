@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ВКР-Контур — платформа сопровождения выпускной работы</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Inter', sans-serif; }
+        body {
+            background: #f8fafc;
+            min-height: 100vh;
+        }
+        .gradient-header {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #a855f7 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        .gradient-header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -20%;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+        .gradient-header::after {
+            content: '';
+            position: absolute;
+            bottom: -60%;
+            left: -10%;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 0 8px 32px rgba(79, 70, 229, 0.08), 0 2px 8px rgba(0,0,0,0.04);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 16px 48px rgba(79, 70, 229, 0.15), 0 4px 12px rgba(0,0,0,0.06);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(79, 70, 229, 0.35);
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(79, 70, 229, 0.45);
+        }
+        .btn-primary:active { transform: translateY(0); }
+        .btn-secondary {
+            background: #f1f5f9;
+            transition: all 0.3s ease;
+        }
+        .btn-secondary:hover {
+            background: #e2e8f0;
+        }
+        .step-circle {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .step-1 { background: linear-gradient(135deg, #dbeafe, #bfdbfe); color: #1d4ed8; }
+        .step-2 { background: linear-gradient(135deg, #dcfce7, #bbf7d0); color: #15803d; }
+        .step-3 { background: linear-gradient(135deg, #fef3c7, #fde68a); color: #b45309; }
+        textarea:focus {
+            outline: none;
+            border-color: #7c3aed;
+            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+        }
+        .loading-spinner {
+            border: 3px solid #e2e8f0;
+            border-top: 3px solid #7c3aed;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+        .badge-purple { background: #ede9fe; color: #6d28d9; }
+        .badge-blue { background: #dbeafe; color: #1d4ed8; }
+        .badge-green { background: #dcfce7; color: #15803d; }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="gradient-header text-white">
+        <div class="max-w-4xl mx-auto px-4 py-10 md:py-14 relative z-10">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="text-3xl">📄</span>
+                <span class="badge" style="background: rgba(255,255,255,0.2); color: #fff; backdrop-filter: blur(4px);">MVP • Yandex AI Studio</span>
+            </div>
+            <h1 class="text-3xl md:text-4xl font-extrabold mb-2 tracking-tight">ВКР-Контур</h1>
+            <p class="text-white/80 text-base md:text-lg max-w-xl">Платформа полного цикла сопровождения выпускной квалификационной работы — от черновика до защиты.</p>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 py-8 -mt-6 relative z-20">
+
+        <!-- Welcome Card -->
+        <div class="card rounded-2xl p-6 md:p-8 mb-6 fade-in" id="welcomeCard">
+            <div class="flex items-start gap-4 mb-6">
+                <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xl flex-shrink-0">👋</div>
+                <div>
+                    <h2 class="text-xl font-bold text-gray-900 mb-1">Добро пожаловать!</h2>
+                    <p class="text-gray-500 text-sm">Этот инструмент поможет вам пройти путь от черновика до готовой работы. Мы разобьём процесс на шаги и будем вести вас по ним.</p>
+                </div>
+            </div>
+            <div class="bg-indigo-50/80 border border-indigo-100 rounded-xl p-4 mb-6">
+                <p class="text-sm text-indigo-700">💡 <strong>Как это работает:</strong> Вставьте текст вашей работы или его фрагмент — нейросеть проанализирует его и предложит улучшения.</p>
+            </div>
+            <button onclick="showStep1()" class="btn-primary text-white font-semibold py-3.5 px-8 rounded-xl w-full md:w-auto text-sm tracking-wide">Начать работу →</button>
+        </div>
+
+        <!-- Step 1: Input -->
+        <div id="step1" class="card rounded-2xl p-6 md:p-8 mb-6 hidden fade-in">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="step-circle step-1">1</div>
+                <div>
+                    <h2 class="text-lg font-bold text-gray-900">Загрузка черновика</h2>
+                    <p class="text-gray-400 text-xs">Шаг 1 из 3</p>
+                </div>
+            </div>
+            <p class="text-gray-500 text-sm mb-4">Вставьте текст вашей работы (можно фрагмент — введение, главу или раздел):</p>
+            <textarea id="draftText" rows="10" class="w-full border border-gray-200 rounded-xl p-4 text-sm text-gray-700 placeholder-gray-300 resize-y transition-all duration-200" placeholder="Вставьте сюда текст вашей работы..."></textarea>
+            
+            <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-600 mb-2">Требования к работе <span class="text-gray-400 font-normal">(опционально)</span></label>
+                <textarea id="requirements" rows="3" class="w-full border border-gray-200 rounded-xl p-4 text-sm text-gray-700 placeholder-gray-300 resize-y transition-all duration-200" placeholder="Например: ГОСТ 7.32-2017, объём 50 страниц, шрифт Times New Roman 14 пт..."></textarea>
+            </div>
+
+            <button onclick="startDiagnostics()" class="btn-primary text-white font-semibold py-3.5 px-8 rounded-xl w-full mt-5 text-sm tracking-wide">🔍 Запустить диагностику</button>
+            <div class="loading hidden mt-5 items-center justify-center gap-3" id="loading1">
+                <div class="loading-spinner"></div>
+                <span class="text-gray-500 text-sm">Анализируем текст...</span>
+            </div>
+        </div>
+
+        <!-- Step 2: Results -->
+        <div id="step2" class="card rounded-2xl p-6 md:p-8 mb-6 hidden fade-in">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="step-circle step-2">2</div>
+                <div>
+                    <h2 class="text-lg font-bold text-gray-900">Результаты диагностики</h2>
+                    <p class="text-gray-400 text-xs">Шаг 2 из 3</p>
+                </div>
+            </div>
+            <div id="diagnosticsResult" class="bg-gray-50 border border-gray-100 rounded-xl p-5 mb-6 min-h-[100px] text-gray-700 text-sm leading-relaxed whitespace-pre-wrap"></div>
+            <div class="flex flex-col md:flex-row gap-3">
+                <button onclick="improveText()" class="btn-primary text-white font-semibold py-3.5 px-8 rounded-xl flex-1 text-sm tracking-wide">✍️ Улучшить текст</button>
+                <button onclick="resetApp()" class="btn-secondary text-gray-600 font-semibold py-3.5 px-8 rounded-xl flex-1 text-sm tracking-wide">🔄 Новая работа</button>
+            </div>
+        </div>
+
+        <!-- Step 3: Improved -->
+        <div id="step3" class="card rounded-2xl p-6 md:p-8 mb-6 hidden fade-in">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="step-circle step-3">3</div>
+                <div>
+                    <h2 class="text-lg font-bold text-gray-900">Улучшенный текст</h2>
+                    <p class="text-gray-400 text-xs">Шаг 3 из 3</p>
+                </div>
+            </div>
+            <div id="improvedResult" class="bg-gray-50 border border-gray-100 rounded-xl p-5 mb-6 min-h-[100px] text-gray-700 text-sm leading-relaxed whitespace-pre-wrap"></div>
+            <div class="flex flex-col md:flex-row gap-3">
+                <button onclick="copyText()" class="btn-primary text-white font-semibold py-3.5 px-8 rounded-xl flex-1 text-sm tracking-wide">📋 Копировать текст</button>
+                <button onclick="resetApp()" class="btn-secondary text-gray-600 font-semibold py-3.5 px-8 rounded-xl flex-1 text-sm tracking-wide">🔄 Новая работа</button>
+            </div>
+        </div>
+    </main>
+
+    <footer class="text-center py-8 text-gray-400 text-xs">
+        <p>ВКР-Контур MVP • Работает на Yandex AI Studio</p>
+    </footer>
+
+    <script>
+        const API_URL = 'https://d5dvt9csk3t8rstmokg8.g2n58e0c.apigw.yandexcloud.net/';
+
+        function showStep1() {
+            document.getElementById('welcomeCard').classList.add('hidden');
+            const el = document.getElementById('step1');
+            el.classList.remove('hidden');
+            el.classList.add('fade-in');
+        }
+
+        async function callYandexGPT(prompt) {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    messages: [{ role: 'user', text: prompt }]
+                })
+            });
+            const data = await response.json();
+            if (data.error) throw new Error(data.error);
+            return data.result.alternatives[0].message.text;
+        }
+
+        async function startDiagnostics() {
+            const text = document.getElementById('draftText').value.trim();
+            if (!text) { alert('Пожалуйста, вставьте текст работы.'); return; }
+            
+            document.getElementById('loading1').classList.remove('hidden');
+            document.getElementById('loading1').classList.add('flex');
+            document.querySelector('#step1 button').disabled = true;
+            document.querySelector('#step1 button').style.opacity = '0.6';
+
+            try {
+                const prompt = `Ты — опытный научный руководитель. Проанализируй следующий текст выпускной квалификационной работы и дай краткую диагностику:
+1. Структура (есть ли введение, главы, заключение)
+2. Основные проблемы (логика, аргументация, стиль)
+3. Что улучшить в первую очередь
+
+Текст работы:
+${text}
+
+Требования:
+${document.getElementById('requirements').value || 'Стандартные требования ГОСТ'}
+
+Ответ дай кратко, по пунктам, на русском языке.`;
+
+                const result = await callYandexGPT(prompt);
+                document.getElementById('diagnosticsResult').innerText = result;
+                document.getElementById('step1').classList.add('hidden');
+                const el = document.getElementById('step2');
+                el.classList.remove('hidden');
+                el.classList.add('fade-in');
+            } catch (e) {
+                alert('Ошибка: ' + e.message);
+            } finally {
+                document.getElementById('loading1').classList.add('hidden');
+                document.getElementById('loading1').classList.remove('flex');
+                document.querySelector('#step1 button').disabled = false;
+                document.querySelector('#step1 button').style.opacity = '1';
+            }
+        }
+
+        async function improveText() {
+            const text = document.getElementById('draftText').value.trim();
+            document.getElementById('step2').classList.add('hidden');
+            const el = document.getElementById('step3');
+            el.classList.remove('hidden');
+            el.classList.add('fade-in');
+            document.getElementById('improvedResult').innerText = 'Обрабатываем...';
+
+            try {
+                const prompt = `Ты — опытный редактор научных текстов. Улучши следующий текст выпускной квалификационной работы:
+- Исправь стилистические ошибки
+- Улучши логику изложения
+- Добавь академический тон
+- Сохрани смысл и структуру
+
+Текст:
+${text}
+
+Верни только улучшенный текст, без комментариев.`;
+
+                const result = await callYandexGPT(prompt);
+                document.getElementById('improvedResult').innerText = result;
+            } catch (e) {
+                document.getElementById('improvedResult').innerText = 'Ошибка: ' + e.message;
+            }
+        }
+
+        function copyText() {
+            const text = document.getElementById('improvedResult').innerText;
+            navigator.clipboard.writeText(text).then(() => alert('Текст скопирован!'));
+        }
+
+        function resetApp() {
+            document.getElementById('step1').classList.add('hidden');
+            document.getElementById('step2').classList.add('hidden');
+            document.getElementById('step3').classList.add('hidden');
+            const el = document.getElementById('welcomeCard');
+            el.classList.remove('hidden');
+            el.classList.add('fade-in');
+            document.getElementById('draftText').value = '';
+            document.getElementById('requirements').value = '';
+        }
+    </script>
+</body>
+</html>
