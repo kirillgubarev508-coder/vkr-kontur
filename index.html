@@ -840,6 +840,21 @@
         font-size: 11px;
         margin-bottom: 4px;
       }
+      dialog.history-dialog { max-width: 1080px; }
+      .version-controls { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:12px; align-items:end; padding:16px; border:1px solid #ddd6fe; border-radius:14px; background:#f5f3ff; }
+      .version-controls label { display:block; font-size:11px; font-weight:600; margin-bottom:7px; }
+      .version-controls select { width:100%; min-width:0; font-size:12px; }
+      .comparison-toolbar { display:flex; gap:12px; justify-content:space-between; align-items:center; flex-wrap:wrap; margin:14px 0; font-size:12px; }
+      .comparison-toolbar label { display:flex; align-items:center; gap:6px; }
+      .comparison-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; }
+      .comparison-panel { min-width:0; border:1px solid var(--border); border-radius:12px; padding:14px; background:white; }
+      .comparison-panel h3 { font-size:12px; color:var(--ink); margin-bottom:10px; }
+      .comparison-panel details { font-size:11px; color:#64748b; margin:10px 0; border:1px dashed #cbd5e1; padding:8px; border-radius:8px; }
+      .comparison-panel summary { cursor:pointer; }
+      .comparison-panel .diff-content { max-height:45vh; overflow:auto; }
+      .step.needs-review .step-num { background:#fef3c7; color:#92400e; }
+      .badge.review { background:#fef3c7; color:#92400e; }
+      @media(max-width:600px) { .comparison-grid { grid-template-columns:1fr; } .version-controls { grid-template-columns:minmax(0,1fr); } .version-controls .swap-versions { justify-self:center; } }
       .diff-content {
         white-space: pre-wrap;
         font-size: 12px;
@@ -26244,12 +26259,19 @@ function markdownHTML(text) {
   const box = document.createElement("template");
   box.innerHTML = sanitize(marked.parse(text, { gfm: true, breaks: true }));
   box.content.querySelectorAll("img").forEach((img) => {
-    const marker = (img.getAttribute("src") || "").match(
-      /^asset:([a-zA-Z0-9-]+)$/,
+    const source = (img.getAttribute("src") || "").trim();
+    const marker = source.match(
+      /^(?:asset|attachment):\/{0,2}([a-zA-Z0-9-]+)$/i,
+    );
+    const direct = state.materials.filter(
+      (a) => a.type === "image" && (a.id === source || a.name === source),
     );
     const a =
-      marker &&
-      state.materials.find((x) => x.id === marker[1] && x.type === "image");
+      (marker &&
+        state.materials.find(
+          (x) => x.id === marker[1] && x.type === "image",
+        )) ||
+      (direct.length === 1 ? direct[0] : null);
     if (a) {
       img.src = a.data;
       img.dataset.assetId = a.id;
@@ -26585,7 +26607,8 @@ function renderSteps() {
           : ["done", "skipped"].includes(st)
             ? "done"
             : "") +
-      (!unlocked ? " locked" : "");
+      (!unlocked ? " locked" : "") +
+      (state.steps[s.id]?.needsReview ? " needs-review" : "");
     b.disabled = running || switching || !unlocked;
     b.innerHTML =
       '<span class="step-num">' +
@@ -26610,7 +26633,9 @@ function renderSteps() {
           : st === "skipped"
             ? "Пропущен · нет библиографии"
             : st === "done"
-              ? "Выполнено · " + s.desc
+              ? state.steps[s.id]?.needsReview
+                ? "Обработано · проверьте замечания"
+                : "Выполнено · " + s.desc
               : !unlocked
                 ? "Завершите предыдущий этап"
                 : s.desc) +
@@ -26648,13 +26673,18 @@ function showFeedback(step, text, error = false) {
   $("feedbackTitle").textContent = error
     ? "Не удалось завершить шаг"
     : step.label;
+  const needsReview =
+    !error && step.edit && Boolean(state.results[step.id]?.needsReview);
   $("feedbackBadge").textContent = error
     ? "Ошибка"
-    : step.edit
-      ? "Правки применены"
-      : "Информация";
+    : needsReview
+      ? "Проверьте результат"
+      : step.edit
+        ? "Правки применены"
+        : "Информация";
   $("feedbackBadge").className =
-    "badge " + (error ? "red" : step.edit ? "green" : "");
+    "badge " +
+    (error ? "red" : needsReview ? "review" : step.edit ? "green" : "");
   $("feedbackContent").textContent = text;
   $("diffBtn").hidden = error || !step.edit || !lastDiff.before;
 }
@@ -26705,6 +26735,7 @@ function showModal(title, content) {
   $("modalBody").replaceChildren();
   if (typeof content === "string") $("modalBody").innerHTML = content;
   else $("modalBody").append(content);
+  $("modal").classList.remove("history-dialog");
   if (!$("modal").open) $("modal").showModal();
 }
 function apiEndpoint() {
@@ -26811,6 +26842,7 @@ async function apiRequest(body, signal) {
   throw new Error("Не удалось получить ответ.");
 }
 async function trimResponseCache() {
+  const prefix = state.projectId + ":response:";
   const d = await db();
   return new Promise((resolve, reject) => {
     const tx = d.transaction("assets", "readwrite"),
@@ -26820,7 +26852,7 @@ async function trimResponseCache() {
     req.onsuccess = () => {
       const cursor = req.result;
       if (cursor) {
-        if (String(cursor.key).startsWith("response:"))
+        if (String(cursor.key).startsWith(prefix))
           records.push({ key: cursor.key, at: cursor.value.at || 0 });
         cursor.continue();
       } else {
@@ -27574,7 +27606,9 @@ function localFinalReport() {
         (s.id === 14
           ? "итоговый отчёт сформирован"
           : {
-              done: "выполнен",
+              done: state.steps[s.id]?.needsReview
+                ? "обработан; проверьте замечания"
+                : "выполнен",
               skipped: "пропущен: нет библиографии",
               error: "не завершён",
             }[state.steps[s.id]?.status] || "ожидает"),
@@ -27789,6 +27823,7 @@ async function applyStep() {
     beforeHTML: cleanHTML(editor.innerHTML),
     foreignConsent: $("consentCheckbox").checked,
     structure: structureContext(all),
+    scope,
     synthesize: $("economySummary").checked,
   };
   persist();
@@ -27826,6 +27861,39 @@ function applyChunk(chunk, result) {
     return { changed: 0 };
   const box = document.createElement("div");
   box.innerHTML = markdownHTML(result.text);
+  const owned = new Set(nodes),
+    usedAssets = new Set();
+  editor.querySelectorAll("img[data-asset-id]").forEach((img) => {
+    let owner = img;
+    while (owner.parentElement && owner.parentElement !== editor)
+      owner = owner.parentElement;
+    if (!owned.has(owner)) usedAssets.add(img.dataset.assetId);
+  });
+  box.querySelectorAll("img[data-asset-id]").forEach((img) => {
+    if (!usedAssets.has(img.dataset.assetId)) {
+      usedAssets.add(img.dataset.assetId);
+      return;
+    }
+    const figure = img.closest("figure"),
+      parent = img.parentElement;
+    if (figure) {
+      figure.remove();
+      return;
+    }
+    if (
+      parent !== box &&
+      !parent.textContent.trim() &&
+      parent.querySelectorAll("img").length === 1
+    ) {
+      const caption = parent.nextElementSibling;
+      if (
+        caption &&
+        /^рисунок\s*\d+\s*[—–.:-]/i.test(caption.textContent.trim())
+      )
+        caption.remove();
+      parent.remove();
+    } else img.remove();
+  });
   const fresh = Array.from(box.children);
   if (!fresh.length) throw new Error("Не удалось разобрать итоговый фрагмент.");
   const beforeText = nodes.map((n) => n.innerText).join("\n\n"),
@@ -27883,6 +27951,53 @@ function applyChunk(chunk, result) {
     afterText: lastDiff.after,
     blockIDs: output.map((n) => n.dataset.blockId),
   };
+}
+function ensureMaterialImages(job) {
+  const images = state.materials.filter((a) => a.type === "image" && a.data);
+  const present = new Set(
+    Array.from(
+      editor.querySelectorAll("img[data-asset-id]"),
+      (n) => n.dataset.assetId,
+    ),
+  );
+  const inserted = [];
+  let anchor = job.lastAppliedIDs
+    ?.map((id) =>
+      Array.from(editor.children).find((n) => n.dataset.blockId === id),
+    )
+    .filter(Boolean)
+    .at(-1);
+  const bibliography = Array.from(editor.children).find((n) =>
+    isBibliographyHeading(blockMD(n)),
+  );
+  let number = editor.querySelectorAll("img").length;
+  for (const image of images) {
+    if (present.has(image.id)) continue;
+    const figure = document.createElement("figure"),
+      img = document.createElement("img"),
+      caption = document.createElement("figcaption");
+    const label = image.caption?.trim() || image.name;
+    img.src = image.data;
+    img.alt = label;
+    img.dataset.assetId = image.id;
+    caption.textContent = "Рисунок " + ++number + " — " + label;
+    figure.append(img, caption);
+    figure.dataset.blockId = uid();
+    figure.className = "changed";
+    if (job.scope === "selection" && anchor) anchor.after(figure);
+    else if (bibliography) bibliography.before(figure);
+    else editor.append(figure);
+    anchor = figure;
+    present.add(image.id);
+    inserted.push({ id: image.id, caption: label });
+    setTimeout(() => figure.classList.remove("changed"), 4500);
+  }
+  if (inserted.length) {
+    assignBlocks();
+    updateStats();
+    persist();
+  }
+  return inserted;
 }
 function tokenCount(usage) {
   if (!usage) return 0;
@@ -27979,24 +28094,55 @@ async function runJob() {
           ) +
           "\n" +
           context;
-      const result = await apiRequest(
-        {
-          action: "run",
-          step: job.step,
-          model: job.model,
-          text: c.text,
-          context: context.slice(0, 3500),
-          requirements: job.requirements,
-          materials: job.materials,
-          sources,
-          profile: job.profile,
-          partial: !step.edit && job.chunks.length > 1,
-          ...(step.edit && c.blocks
-            ? { responseFormat: "patches-v1", blocks: c.blocks }
-            : {}),
-        },
-        controller.signal,
-      );
+      let result;
+      try {
+        result = await apiRequest(
+          {
+            action: "run",
+            step: job.step,
+            model: job.model,
+            text: c.text,
+            context: context.slice(0, 3500),
+            requirements: job.requirements,
+            materials: job.materials,
+            sources,
+            profile: job.profile,
+            partial: !step.edit && job.chunks.length > 1,
+            ...(step.edit && c.blocks
+              ? { responseFormat: "patches-v1", blocks: c.blocks }
+              : {}),
+          },
+          controller.signal,
+        );
+      } catch (e) {
+        if (
+          !controller.signal.aborted &&
+          ["TRUNCATED", "PATCH_FORMAT", "PATCH_ID"].includes(e.code) &&
+          c.blocks?.length > 1 &&
+          (c.recoveryDepth || 0) < 2 &&
+          (job.recoveries || 0) < 4
+        ) {
+          const middle = Math.ceil(c.blocks.length / 2);
+          const parts = [c.blocks.slice(0, middle), c.blocks.slice(middle)].map(
+            (part) => ({
+              ...c,
+              blocks: part,
+              ids: part.map((b) => b.id),
+              text: part.map((b) => b.text).join("\n\n"),
+              recoveryDepth: (c.recoveryDepth || 0) + 1,
+            }),
+          );
+          job.chunks.splice(job.index, 1, ...parts);
+          job.recoveries = (job.recoveries || 0) + 1;
+          progress(
+            job,
+            "Ответ модели оказался неполным. Автоматически обрабатываем меньшие части…",
+          );
+          persist();
+          continue;
+        }
+        throw e;
+      }
       if (controller.signal.aborted)
         throw new DOMException("Остановлено", "AbortError");
       let event = null;
@@ -28005,7 +28151,10 @@ async function runJob() {
         job.comments.push({
           comment: result.comment || "Текст обновлён.",
           changed: change.changed,
+          needsReview: Boolean(result.needsReview),
+          warnings: result.warnings || [],
         });
+        job.lastAppliedIDs = change.blockIDs || c.ids;
         showFeedback(step, result.comment || "Текст обновлён.");
         event = {
           step: job.step,
@@ -28028,6 +28177,17 @@ async function runJob() {
       if (event) await logEvent("ai-edit", event);
       progress(job);
     }
+    if (job.step === 3) {
+      const inserted = ensureMaterialImages(job);
+      if (inserted.length) {
+        job.materialFallbackCount = inserted.length;
+        await logEvent("material-insert", {
+          step: 3,
+          source: "uploaded-files",
+          images: inserted,
+        });
+      }
+    }
     let output;
     if (step.edit) {
       output =
@@ -28040,7 +28200,18 @@ async function runJob() {
             ". " +
             (job.comments.find((c) => c.changed)?.comment ||
               "Текст не требовал изменений.");
+      if (job.materialFallbackCount)
+        output +=
+          " Загруженные изображения добавлены с вашими подписями; проверьте их расположение.";
+      const reviewComments = job.comments
+        .filter((c) => c.needsReview)
+        .map((c) => c.comment);
+      if (reviewComments.length && !reviewComments.includes(output))
+        output += " " + [...new Set(reviewComments)].join(" ");
       state.results[job.step] = {
+        needsReview: Boolean(
+          job.materialFallbackCount || reviewComments.length,
+        ),
         comment: output,
         text: "",
         date: new Date().toISOString(),
@@ -28062,6 +28233,7 @@ async function runJob() {
       };
     }
     state.steps[job.step] = {
+      needsReview: Boolean(state.results[job.step]?.needsReview),
       status: "done",
       date: new Date().toISOString(),
     };
@@ -28167,15 +28339,27 @@ async function synthesizeInfo(job, signal) {
     "Не удалось собрать единый отчёт. Все промежуточные результаты сохранены.",
   );
 }
+function textualDiff(before, after) {
+  if (before === after) return [{ value: before }];
+  if (window.Diff) {
+    const tokenize = (text) =>
+      String(text).match(/[\p{L}\p{N}\p{M}_]+|\s+|[^\p{L}\p{N}\p{M}_\s]/gu) ||
+      [];
+    const parts = Diff.diffArrays(tokenize(before), tokenize(after), {
+      timeout: 750,
+      maxEditLength: 4000,
+    });
+    if (parts) return parts.map((p) => ({ ...p, value: p.value.join("") }));
+  }
+  return [
+    { removed: true, value: before },
+    { added: true, value: after },
+  ];
+}
 function showDiff() {
   const box = document.createElement("div");
   box.className = "diff-content";
-  const parts = window.Diff
-    ? Diff.diffWordsWithSpace(lastDiff.before, lastDiff.after)
-    : [
-        { removed: true, value: lastDiff.before },
-        { added: true, value: lastDiff.after },
-      ];
+  const parts = textualDiff(lastDiff.before, lastDiff.after);
   for (const part of parts || []) {
     const el = document.createElement(
       part.added ? "ins" : part.removed ? "del" : "span",
@@ -28185,13 +28369,181 @@ function showDiff() {
   }
   showModal("Изменения последнего фрагмента", box);
 }
+function versionText(html) {
+  const template = document.createElement("template");
+  template.innerHTML = cleanHTML(html);
+  const walk = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent;
+    if (node.nodeType !== Node.ELEMENT_NODE) return "";
+    if (node.tagName === "BR") return "\n";
+    if (node.tagName === "IMG")
+      return "[Рисунок: " + (node.alt || "без подписи") + "]";
+    const text = Array.from(node.childNodes).map(walk).join("");
+    if (node.tagName === "TD" || node.tagName === "TH") return text + " | ";
+    if (
+      /^(?:H[1-6]|P|DIV|LI|BLOCKQUOTE|PRE|TR|FIGCAPTION|FIGURE)$/.test(
+        node.tagName,
+      )
+    )
+      return text + "\n";
+    return text;
+  };
+  return Array.from(template.content.childNodes)
+    .map(walk)
+    .join("")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 function showHistory() {
+  const project = state,
+    currentHTML = packHTML(cleanHTML(editor.innerHTML));
+  const versions = [
+    ...state.history,
+    {
+      id: "current",
+      label: "Текущий текст",
+      date: new Date().toISOString(),
+      html: currentHTML,
+    },
+  ];
   const container = document.createElement("div"),
     note = document.createElement("p");
   note.className = "small";
   note.textContent =
-    "До 8 контрольных версий. Откат возвращает текст и статусы шагов; журнал авторства сохраняется.";
+    "Выберите две версии: зелёным показано добавленное, красным — удалённое. Сравнение локальное и не меняет документ. Откат доступен ниже.";
   container.append(note);
+  const controlsBox = document.createElement("div");
+  controlsBox.className = "version-controls";
+  const selects = [];
+  for (const [id, label] of [
+    ["compareFrom", "Было · исходная версия"],
+    ["compareTo", "Стало · новая версия"],
+  ]) {
+    const field = document.createElement("div"),
+      title = document.createElement("label"),
+      select = document.createElement("select");
+    title.htmlFor = id;
+    title.textContent = label;
+    select.id = id;
+    for (const v of versions) {
+      const option = document.createElement("option");
+      option.value = v.id;
+      option.textContent =
+        v.label + " · " + new Date(v.date).toLocaleString("ru-RU");
+      select.append(option);
+    }
+    field.append(title, select);
+    selects.push(select);
+    controlsBox.append(field);
+  }
+  const [from, to] = selects,
+    swap = document.createElement("button");
+  swap.id = "swapVersions";
+  swap.className = "btn secondary swap-versions";
+  swap.textContent = "⇄";
+  swap.title = "Поменять версии местами";
+  swap.setAttribute("aria-label", swap.title);
+  controlsBox.insertBefore(swap, controlsBox.lastChild);
+  from.value =
+    [...state.history].reverse().find((h) => h.html !== currentHTML)?.id ||
+    versions[0].id;
+  to.value = "current";
+  container.append(controlsBox);
+  const toolbar = document.createElement("div");
+  toolbar.className = "comparison-toolbar";
+  const summary = document.createElement("span");
+  summary.id = "comparisonSummary";
+  summary.setAttribute("role", "status");
+  const label = document.createElement("label"),
+    onlyChanges = document.createElement("input");
+  onlyChanges.type = "checkbox";
+  onlyChanges.id = "onlyVersionChanges";
+  label.append(onlyChanges, document.createTextNode("Только изменения"));
+  toolbar.append(summary, label);
+  container.append(toolbar);
+  const comparison = document.createElement("div");
+  comparison.className = "comparison-grid";
+  comparison.id = "versionComparison";
+  container.append(comparison);
+  const draw = () => {
+    const before = versions.find((v) => v.id === from.value),
+      after = versions.find((v) => v.id === to.value);
+    const oldText = versionText(before.html),
+      newText = versionText(after.html);
+    const parts = textualDiff(oldText, newText);
+    const added = parts
+        .filter((p) => p.added)
+        .reduce((sum, p) => sum + p.value.length, 0),
+      removed = parts
+        .filter((p) => p.removed)
+        .reduce((sum, p) => sum + p.value.length, 0);
+    summary.textContent =
+      added || removed
+        ? "+ " +
+          added.toLocaleString("ru") +
+          " символов · − " +
+          removed.toLocaleString("ru") +
+          " символов"
+        : "Тексты совпадают" +
+          (before.html !== after.html
+            ? "; оформление или изображения могут отличаться"
+            : "");
+    comparison.replaceChildren();
+    for (const [side, v] of [
+      ["before", before],
+      ["after", after],
+    ]) {
+      const panel = document.createElement("section"),
+        heading = document.createElement("h3"),
+        content = document.createElement("div");
+      panel.className = "comparison-panel";
+      heading.textContent =
+        (side === "before" ? "Было: " : "Стало: ") + v.label;
+      content.className = "diff-content";
+      content.dataset.side = side;
+      for (const part of parts) {
+        if (
+          (side === "before" && part.added) ||
+          (side === "after" && part.removed)
+        )
+          continue;
+        const changed = part.added || part.removed;
+        if (!changed && onlyChanges.checked && part.value.length > 200) {
+          const details = document.createElement("details"),
+            title = document.createElement("summary"),
+            text = document.createElement("div");
+          title.textContent =
+            "Без изменений · " +
+            part.value.length.toLocaleString("ru") +
+            " символов";
+          text.textContent = part.value;
+          details.append(title, text);
+          content.append(details);
+        } else {
+          const span = document.createElement(
+            part.added ? "ins" : part.removed ? "del" : "span",
+          );
+          span.textContent = part.value;
+          content.append(span);
+        }
+      }
+      if (!oldText && !newText) content.textContent = "Пустой документ";
+      panel.append(heading, content);
+      comparison.append(panel);
+    }
+  };
+  from.onchange = to.onchange = onlyChanges.onchange = draw;
+  swap.onclick = () => {
+    const v = from.value;
+    from.value = to.value;
+    to.value = v;
+    draw();
+  };
+  draw();
+  const listTitle = document.createElement("h3");
+  listTitle.textContent = "Контрольные версии · восстановление";
+  listTitle.style.cssText = "margin:20px 0 12px;font-size:13px";
+  container.append(listTitle);
   for (const h of [...state.history].reverse()) {
     const n = document.createElement("div");
     n.className = "history-item";
@@ -28208,6 +28560,8 @@ function showHistory() {
     btn.disabled = running;
     btn.onclick = async () => {
       if (
+        state !== project ||
+        running ||
         !confirm(
           "Восстановить эту версию? Текущий текст будет сохранён в истории.",
         )
@@ -28223,6 +28577,7 @@ function showHistory() {
       await logEvent("restore", { versionId: h.id });
       renderAttachments();
       controls();
+      persist();
       $("modal").close();
       toast("Версия восстановлена", "success");
     };
@@ -28233,10 +28588,11 @@ function showHistory() {
     const p = document.createElement("p");
     p.className = "empty";
     p.textContent =
-      "Версии появятся после загрузки документа и выполнения шагов.";
+      "Контрольные версии появятся после загрузки и выполнения шагов.";
     container.append(p);
   }
-  showModal("История версий", container);
+  showModal("История и сравнение версий", container);
+  $("modal").classList.add("history-dialog");
 }
 function showSettings() {
   showModal(
