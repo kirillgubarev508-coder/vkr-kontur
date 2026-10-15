@@ -2,7 +2,7 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="application-version" content="2.4.0" />
+    <meta name="application-version" content="2.5.0" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="theme-color" content="#4f46e5" />
     <title>ВКР-Контур — от черновика до защиты</title>
@@ -1285,6 +1285,13 @@
                 Изображения вставляются из ваших файлов. Добавьте описание —
                 модель не видит содержимое картинки.
               </p>
+              <section class="assist-tools" aria-label="Дополнительные инструменты" style="border-top:1px solid #e2e8f0;margin-top:20px;padding-top:16px">
+                <h2 style="font-size:13px">✦ Дополнить документ</h2>
+                <p class="micro">Короткие AI-дополнения по текущей работе. Не меняют прогресс этапов; каждое изменение сохраняется в версии.</p>
+                <button type="button" id="abstractTool" class="btn wide" style="margin-top:8px">Аннотация и ключевые слова</button>
+                <button type="button" id="glossaryTool" class="btn wide" style="margin-top:8px">Список сокращений</button>
+                <p class="micro" id="assistStatus" role="status" style="margin-top:8px"></p>
+              </section>
             </aside>
             <section class="glass editor-card">
               <div class="editor-heading">
@@ -1402,7 +1409,7 @@
                 <div class="feedback-actions">
                   <button id="copyFeedbackBtn" class="btn">Копировать</button
                   ><button id="diffBtn" class="btn" hidden>
-                    Посмотреть изменения
+                    Посмотреть различия
                   </button>
                 </div>
               </section>
@@ -1472,7 +1479,7 @@
                   North Mini
                 </option>
               </optgroup>
-            </select><div class="small" id="modelStatus" role="status" style="margin:8px 0"></div><button type="button" class="btn" id="probeModel" style="font-size:11px">Проверить модель</button>
+            </select><div class="small" id="modelStatus" role="status" style="margin:8px 0"></div>
             <div class="action-box">
               <strong id="selectedName">1. Загрузка и профиль</strong>
               <p id="selectedMode">Анализ · результат под редактором</p>
@@ -26154,7 +26161,8 @@ async function openProject(id, create = false) {
     STORAGE = "vkr-project:" + state.projectId;
     requestCache.clear();
     selectedIDs = [];
-    lastDiff = { before: "", after: "" };
+    lastDiff = state.lastDiff || { before: "", after: "" };
+    applyVisibleFormat();
     feedbackText = "";
     $("feedback").hidden = true;
     editor.innerHTML = await unpackHTML(state.html);
@@ -26509,13 +26517,18 @@ function scheduleSave() {
   $("saveStatus").textContent = "Есть несохранённые изменения…";
 }
 function snapshot(label) {
-  const html = packHTML(cleanHTML(editor.innerHTML));
+  const stable = document.createElement("div");
+  stable.innerHTML = cleanHTML(editor.innerHTML);
+  stable
+    .querySelectorAll(".changed")
+    .forEach((n) => n.classList.remove("changed"));
+  const html = packHTML(stable.innerHTML);
   if (
     state.history.at(-1)?.html === html &&
     JSON.stringify(state.history.at(-1)?.formatProfile || null) ===
       JSON.stringify(state.formatProfile || null)
   )
-    return;
+    return state.history.at(-1)?.id;
   state.history.push({
     id: uid(),
     label,
@@ -26530,6 +26543,7 @@ function snapshot(label) {
     sourceReview: structuredClone(state.sourceReview || null),
   });
   state.history = state.history.slice(-8);
+  return state.history.at(-1)?.id;
 }
 async function digest(text) {
   if (!crypto.subtle) return "unavailable";
@@ -26694,8 +26708,20 @@ function selectStep(id) {
   $("stepFiles").hidden = !s.fileUpload;
   $("requirements").value = state.requirements[id]?.text || "";
   $("stepFileName").textContent = state.requirements[id]?.name || "";
-  if (state.results[id])
-    showFeedback(s, state.results[id].comment || state.results[id].text);
+  if (state.results[id]) {
+    const result = state.results[id],
+      before = state.history.find((v) => v.id === result.beforeVersion),
+      after = state.history.find((v) => v.id === result.afterVersion);
+    if (before && after)
+      lastDiff = {
+        before: versionText(before.html),
+        after: versionText(after.html),
+        formatBefore: JSON.stringify(before.formatProfile || null),
+        formatAfter: JSON.stringify(after.formatProfile || null),
+        step: id,
+      };
+    showFeedback(s, result.comment || result.text);
+  }
   renderSteps();
   persist();
 }
@@ -26713,14 +26739,23 @@ function showFeedback(step, text, error = false) {
     ? "Ошибка"
     : needsReview
       ? "Проверьте результат"
-      : step.edit
-        ? "Правки применены"
-        : "Информация";
+      : step.edit && state.results[step.id]?.changed === false
+        ? "Без изменений"
+        : step.edit
+          ? "Правки применены"
+          : "Информация";
   $("feedbackBadge").className =
     "badge " +
     (error ? "red" : needsReview ? "review" : step.edit ? "green" : "");
   $("feedbackContent").textContent = text;
-  $("diffBtn").hidden = error || !step.edit || !lastDiff.before;
+  $("diffBtn").hidden =
+    error ||
+    !step.edit ||
+    (step.id && lastDiff.step && lastDiff.step !== step.id) ||
+    !(
+      lastDiff.before !== lastDiff.after ||
+      lastDiff.formatBefore !== lastDiff.formatAfter
+    );
 }
 function modelChanged() {
   const option = $("modelSelect").selectedOptions[0];
@@ -26750,7 +26785,8 @@ function controls() {
     "stepUploadBtn",
     "requirements",
     "modelSelect",
-    "probeModel",
+    "abstractTool",
+    "glossaryTool",
     "scope",
     "economySummary",
     "consentCheckbox",
@@ -26794,7 +26830,7 @@ async function apiRequest(body, signal) {
   if (hit && hit.at > Date.now() - 300000)
     return { ...hit.value, cached: true };
   const cacheId =
-    "response:" + (await digest("pipeline-2.4\n" + apiEndpoint() + "\n" + key));
+    "response:" + (await digest("pipeline-2.5\n" + apiEndpoint() + "\n" + key));
   const cacheTTL = ["run", "synthesize", "plan", "overview"].includes(
     body.action,
   )
@@ -26931,27 +26967,108 @@ function showModelStatus() {
   $("modelStatus").textContent = m
     ? (!m.configured ? "На сервере не настроен ключ этого провайдера. " : "") +
       (m.freeReason || "")
-    : "Выберите модель и проверьте коротким запросом. Проверка использует небольшую часть квоты.";
+    : "Выбранная модель используется при выполнении шага. Доступность и остаток квоты проверяются провайдером при запросе.";
   if (o && m) o.title = $("modelStatus").textContent;
 }
-async function probeModel() {
-  if (running) return;
-  const button = $("probeModel");
-  button.disabled = true;
-  $("modelStatus").textContent = "Проверяем реальный ответ выбранной модели…";
+async function runDocumentTool(kind) {
+  if (running || switching || state.job) {
+    toast("Завершите или отмените текущий этап.", "info");
+    return;
+  }
+  if (!editor.innerText.trim()) {
+    toast("Сначала загрузите работу.", "info");
+    return;
+  }
+  if (
+    !$("modelSelect").value.startsWith("yandexgpt") &&
+    !$("consentCheckbox").checked
+  ) {
+    toast("Подтвердите отправку фрагмента выбранному провайдеру.", "info");
+    return;
+  }
+  const label =
+    kind === "abstract" ? "Аннотация и ключевые слова" : "Список сокращений";
+  const titlePattern =
+    kind === "abstract"
+      ? /^(аннотация|abstract)$/i
+      : /^(список сокращений|перечень сокращений)$/i;
+  const all = blocks();
+  const existing = all.find((b) => titlePattern.test(sectionTitle(b.text)));
+  if (existing) {
+    $("assistStatus").textContent =
+      "Раздел «" +
+      label +
+      "» уже существует. Повтор не добавлен; для редактуры используйте основной пайплайн.";
+    return;
+  }
+  const anchor = all[0];
+  if (!anchor) return;
+  const context =
+    infoBrief(all) + "\nУже имеющиеся разделы: " + structureContext(all);
+  const job = {
+    step: 2,
+    beforeHTML: cleanHTML(editor.innerHTML),
+    beforeFormat: structuredClone(state.formatProfile || null),
+    materialFacts: "",
+    insertedChars: 0,
+  };
+  snapshot("До дополнения · " + label);
+  running = true;
+  controller = new AbortController();
+  controls();
+  $("assistStatus").textContent = "Готовим: " + label + "…";
   try {
-    const r = await apiRequest({
-      action: "probe",
+    const requirements =
+      "Отдельная задача вне замечаний научрука: " +
+      (kind === "abstract"
+        ? "Составь лаконичную аннотацию на 100–150 слов и 5–7 ключевых слов по доступному тексту. Не придумывай результаты. Размести перед первым блоком, используя insertions.beforeId. Если аннотация уже есть, не создавай дубликат, верни пустые changes/insertions и поясни в comment."
+        : "Составь компактный список только реально встречающихся сокращений с однозначной расшифровкой из контекста; не выдумывай термины. Размести перед первым блоком с заголовком «Список сокращений». Если список уже есть или достоверных сокращений нет, верни пустые changes/insertions.");
+    const result = await apiRequest(
+      {
+        action: "run",
+        step: 2,
+        model: $("modelSelect").value,
+        responseFormat: "patches-v1",
+        text: anchor.text,
+        blocks: [{ id: anchor.id, text: anchor.text }],
+        context,
+        requirements:
+          requirements + (existing ? " Такой раздел уже существует." : ""),
+        profile: JSON.stringify(state.profile || {}),
+      },
+      controller.signal,
+    );
+    if (controller.signal.aborted)
+      throw new DOMException("Остановлено", "AbortError");
+    // Optional tools only insert a short deliverable; they cannot rewrite the thesis.
+    if (result.patches) {
+      result.patches.changes = [];
+      result.patches.deletions = [];
+    } else {
+      $("assistStatus").textContent =
+        "Модель не вернула корректную вставку; документ сохранён.";
+      return;
+    }
+    const applied = applyScopedPatches({ ids: [anchor.id] }, result);
+    const changed = updateStageDiff(job);
+    if (changed) snapshot("Дополнение · " + label);
+    await logEvent("ai-tool", {
+      tool: kind,
       model: $("modelSelect").value,
-      nonce: uid(),
+      changedBlocks: applied.changed,
     });
-    $("modelStatus").textContent = "Модель ответила: " + r.text;
-    toast("Модель доступна", "success");
+    $("assistStatus").textContent = changed
+      ? "Добавлено. Сохранена версия документа."
+      : "Новых вставок нет: раздел уже существует или в ответе нет применимого дополнения.";
+    showFeedback({ id: 0, edit: true, label }, $("assistStatus").textContent);
+    persist();
   } catch (e) {
-    $("modelStatus").textContent = (e.code ? e.code + ": " : "") + e.message;
+    $("assistStatus").textContent = e.message;
     toast(e.message, "error");
   } finally {
-    button.disabled = false;
+    running = false;
+    controller = null;
+    controls();
   }
 }
 async function health() {
@@ -26963,9 +27080,9 @@ async function health() {
     if (!response.ok || !d.ok || d.transport !== "http-fragments")
       throw new Error("Нужна новая версия backend");
     healthModels = d.models || [];
-    if (d.version && d.version !== "2.4.0")
+    if (d.version && d.version !== "2.5.0")
       toast(
-        "Обновите Cloud Function до 2.4.0: страница использует новый AI-планировщик.",
+        "Обновите Cloud Function до 2.5.0: страница использует новый AI-планировщик.",
         "info",
       );
     $("connectionDot").className = "status-dot online";
@@ -27870,7 +27987,26 @@ function formatProfileFromRequirements(text) {
       profile[field] = +m[1].replace(",", ".");
   }
   const after = text.match(/между абзацами[^\d]{0,20}(\d+)\s*пт/i);
-  if (after) profile.afterPt = +after[1];
+  if (after) profile.afterPt = Math.min(24, +after[1]);
+  if (/Arial/i.test(text) && !/Times New Roman/i.test(text))
+    profile.font = "Arial";
+  const font = text.match(
+    /(?:кегл[ья]|размер(?:\s+шрифта)?|шрифт(?:а)?)[^\n\d]{0,45}(1[0-8])(?:\s*(?:пт|pt))?/i,
+  );
+  if (font) profile.fontPt = +font[1];
+  const line = text.match(
+    /(?:межстрочн[^\n\d]{0,30}|интервал[^\n\d]{0,12})([12](?:[.,][025])?)/i,
+  );
+  if (line && +line[1].replace(",", ".") <= 2.5)
+    profile.line = +line[1].replace(",", ".");
+  const indent = text.match(
+    /(?:абзацн[^\n\d]{0,30}|красная строка[^\n\d]{0,15})(\d+(?:[.,]\d+)?)\s*(см|мм)/i,
+  );
+  if (indent)
+    profile.indentMm = Math.min(
+      20,
+      +indent[1].replace(",", ".") * (indent[2] === "см" ? 10 : 1),
+    );
   return profile;
 }
 function tableFromRows(rows) {
@@ -28281,9 +28417,13 @@ function applySourceSelection(plan, candidates) {
   const known = new Set(extractDOIs(documentMD()));
   let count = 0;
   const warnings = [];
-  const selected = (plan.selectedSources || []).map((s) =>
-    typeof s === "string" ? { doi: s, reason: "" } : s,
-  );
+  const selected = (plan.selectedSources || [])
+    .map((s) => (typeof s === "string" ? { doi: s, reason: "" } : s))
+    .filter((item) =>
+      candidates.some(
+        (s) => s.doi.toLowerCase() === String(item.doi).toLowerCase(),
+      ),
+    );
   let anchor = bibliographyBlocks(blocks()).at(-1)?.node;
   if (selected.length && !anchor) {
     const h = document.createElement("h2");
@@ -28371,6 +28511,18 @@ async function prepareAIStage(job, signal) {
   }
   if (job.sources?.length > 28000)
     job.sources = await aiOverview(job.sources, job, "sources", signal);
+  if (job.step === 10 && !job.formatPrepared) {
+    if (job.requirements.trim()) {
+      const formatting = await apiRequest(
+        { action: "format", model: job.model, text: job.requirements },
+        signal,
+      );
+      job.formatPlan = formatting.profile || {};
+      if (!formatting.cached) job.tokens += tokenCount(formatting.usage);
+    }
+    job.formatPrepared = true;
+    persist();
+  }
   if (![3, 4, 6, 8].includes(job.step) || job.planApplied) return;
   let materials = job.materials || "";
   if (materials.length > 30000)
@@ -28408,6 +28560,38 @@ async function prepareAIStage(job, signal) {
     } catch (e) {
       if (e.code !== "PLAN_FORMAT" || attempt) throw e;
     }
+  }
+  if (job.step === 4 && referenceMap().length > 40) {
+    const decisions = [];
+    const refs = referenceMap();
+    for (let i = 0; i < refs.length; i += 40) {
+      const batch = refs.slice(i, i + 40),
+        dois = new Set(batch.map((r) => r.doi));
+      const input = await fitAIInput(
+        {
+          context: job.overview,
+          sources: JSON.stringify({
+            referenceMap: batch.map((r) => ({
+              number: r.number,
+              text: r.text,
+              doi: r.doi,
+            })),
+            metadata: state.sources.filter((r) => dois.has(r.doi)),
+          }),
+          profile: job.profile,
+        },
+        job,
+        "review-sources-" + i,
+        signal,
+      );
+      const review = await apiRequest(
+        { action: "plan", step: 4, model: job.model, ...input },
+        signal,
+      );
+      decisions.push(...review.plan.sourceDecisions);
+      if (!review.cached) job.tokens += tokenCount(review.usage);
+    }
+    result.plan.sourceDecisions = decisions;
   }
   if (signal.aborted) throw new DOMException("Остановлено", "AbortError");
   job.plan = result.plan;
@@ -28485,11 +28669,74 @@ async function prepareAIStage(job, signal) {
     };
   }
   if (job.step === 4) applied = applySourceReview(result.plan);
-  if (job.step === 6)
-    applied = applySourceSelection(result.plan, job.sourceCandidates || []);
+  if (job.step === 6) {
+    const candidates = job.sourceCandidates || [];
+    const proposed = (result.plan.selectedSources || [])
+      .map((v) => v.doi)
+      .filter(
+        (doi) =>
+          /^10\.\d{4,9}\//i.test(doi) &&
+          !candidates.some((s) => s.doi.toLowerCase() === doi.toLowerCase()),
+      );
+    for (let i = 0; i < proposed.length; i += 3) {
+      const verified = await apiRequest(
+        { action: "verify", dois: proposed.slice(i, i + 3) },
+        signal,
+      );
+      for (const source of verified.items || [])
+        if (source.status === "verified" && source.title && !source.retracted)
+          candidates.push(source);
+    }
+    if (proposed.length && candidates.some((s) => proposed.includes(s.doi))) {
+      const input = await fitAIInput(
+        {
+          context: job.overview,
+          sources: JSON.stringify({
+            candidates,
+            existing: referenceMap(),
+            instruction:
+              "Часть DOI предложена в предыдущем ответе. Теперь доступны реальные метаданные. Повторно оцени тематическую релевантность именно по этим метаданным и выбери только подходящие публикации.",
+          }),
+          profile: job.profile,
+        },
+        job,
+        "verified-selection",
+        signal,
+      );
+      const checked = await apiRequest(
+        { action: "plan", step: 6, model: job.model, ...input },
+        signal,
+      );
+      result.plan = checked.plan;
+      if (!checked.cached) job.tokens += tokenCount(checked.usage);
+    }
+    applied = applySourceSelection(result.plan, candidates);
+    if (!applied.count && candidates.length) {
+      const retry = await apiRequest(
+        {
+          action: "plan",
+          step: 6,
+          model: job.model,
+          context: job.overview,
+          sources: JSON.stringify({
+            candidates,
+            existing: referenceMap(),
+            instruction:
+              "Выбери существующие DOI только из candidates; прошлый ответ не добавил источников. Если все нерелевантны, объясни причину.",
+          }).slice(0, 30000),
+          profile: job.profile,
+        },
+        signal,
+      );
+      applied = applySourceSelection(retry.plan, candidates);
+      if (!retry.cached) job.tokens += tokenCount(retry.usage);
+    }
+  }
   if (!result.cached) job.tokens += tokenCount(result.usage);
   const comment =
-    (result.comment || "План модели применён.") +
+    (applied.count
+      ? "Применены решения ИИ по содержимому документа."
+      : "ИИ не выбрал применимых изменений в составе материалов или источников.") +
     " " +
     (job.step === 3
       ? "Вставлено материалов: "
@@ -28504,7 +28751,9 @@ async function prepareAIStage(job, signal) {
   job.comments.push({
     comment,
     changed: applied.count,
-    needsReview: Boolean(applied.warnings.length),
+    needsReview: Boolean(
+      applied.warnings.length || ([3, 6].includes(job.step) && !applied.count),
+    ),
     warnings: applied.warnings,
   });
   job.planApplied = true;
@@ -28604,7 +28853,8 @@ async function applyStep() {
     );
     return;
   }
-  snapshot("До шага " + step.id + " · " + step.label);
+  const originalHTML = cleanHTML(editor.innerHTML);
+  const beforeVersion = snapshot("До шага " + step.id + " · " + step.label);
   if ([4, 6, 10].includes(step.id)) normaliseBibliography();
   splitLongLists(step.id);
   let chunks;
@@ -28629,6 +28879,8 @@ async function applyStep() {
     return;
   }
   state.job = {
+    originalHTML,
+    beforeVersion,
     protocol: "ai-2.4",
     id: uid(),
     step: step.id,
@@ -28654,6 +28906,7 @@ async function applyStep() {
     }),
     started: Date.now(),
     beforeHTML: cleanHTML(editor.innerHTML),
+    beforeFormat: structuredClone(state.formatProfile || null),
     foreignConsent: $("consentCheckbox").checked,
     structure: structureContext(blocks()),
     scope: $("scope").value,
@@ -28763,14 +29016,83 @@ function excludeUnverifiedDOIs(original, proposed, allowed) {
   return { text: hasInvalid(cleaned) ? original : cleaned, excluded: unknown };
 }
 function numericTokens(text) {
+  // Citation numbers, list labels, caption numbers and URL digits are not empirical values.
+  const cleaned = String(text)
+    .replace(/https?:\/\/[^\s)\]]+/g, "")
+    .replace(/\[[^\]]*\]/g, "")
+    .replace(/10\.\d{4,9}\/\S+/g, "")
+    .replace(/^\s*(?:#{1,6}\s*)?\d+(?:\.\d+)*[.)]?\s+/gm, "")
+    .replace(
+      /((?:таблиц[аы]|рисун[окка]+|глава|раздел)\s*)\d+(?:\.\d+)*/gi,
+      "$1",
+    );
   return [
     ...new Set(
-      String(text)
-        .replace(/\[[^\]]*\]/g, "")
-        .replace(/10\.\d{4,9}\/\S+/g, "")
-        .match(/\d+(?:[.,]\d+)?%?/g) || [],
+      (cleaned.match(/\d+(?:[.,]\d+)?/g) || []).map((n) => n.replace(",", ".")),
     ),
   ];
+}
+function bodyCitations(text) {
+  const refs = referenceMap();
+  const known = new Map();
+  for (const r of refs) {
+    for (const doi of extractDOIs(r.text))
+      known.set(doi.toLowerCase(), r.number);
+    for (const url of r.text.match(/https?:\/\/[^\s<>\])]+/g) || [])
+      known.set(url.replace(/[.,;]+$/, "").toLowerCase(), r.number);
+  }
+  let cleaned = String(text).replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    (all, title, url) => {
+      const n =
+        known.get(url.replace(/[.,;]+$/, "").toLowerCase()) ||
+        known.get(extractDOIs(url)[0]);
+      return n ? "[" + n + "]" : title;
+    },
+  );
+  cleaned = cleaned.replace(
+    /\[?(?:https?:\/\/[^\s\]<>]+|10\.\d{4,9}\/[^\s\]<>]+)\]?/g,
+    (raw) => {
+      const value = raw.replace(/^\[|\]$/g, "").replace(/[.,;]+$/, "");
+      const n =
+        known.get(value.toLowerCase()) || known.get(extractDOIs(value)[0]);
+      return n ? "[" + n + "]" : "";
+    },
+  );
+  cleaned = cleaned
+    .replace(
+      /(?:^|\n)\s*Источник:\s*составлено автором на основе данных\s*(\[[\d;,\s–-]+\])?[^\n]*/gi,
+      (all, cite) => (cite ? "\n" + cite : ""),
+    )
+    .replace(
+      /(?:Заменено|Заменены) на (?:более )?актуальные источники из referenceMap\.?/gi,
+      "",
+    );
+  return cleanReferenceCitations(
+    cleaned,
+    new Set(refs.map((r) => r.number)),
+  ).trim();
+}
+function updateStageDiff(job) {
+  const before = versionText(job.originalHTML || job.beforeHTML),
+    after = versionText(editor.innerHTML);
+  const formatBefore = JSON.stringify(job.beforeFormat || null),
+    formatAfter = JSON.stringify(state.formatProfile || null);
+  lastDiff = { before, after, formatBefore, formatAfter, step: job.step };
+  state.lastDiff = lastDiff;
+  return before !== after || formatBefore !== formatAfter;
+}
+function applyVisibleFormat() {
+  const p = state.formatProfile;
+  let style = document.getElementById("documentFormatStyle");
+  if (!style) {
+    style = document.createElement("style");
+    style.id = "documentFormatStyle";
+    document.head.append(style);
+  }
+  style.textContent = p
+    ? `#editor {font-family:"${p.font === "Arial" ? "Arial" : "Times New Roman"}",serif;font-size:${Number(p.fontPt) || 14}pt;line-height:${Number(p.line) || 1.5}} #editor p {text-align:justify;text-indent:${Number(p.indentMm) || 0}mm;margin:0 0 ${Number(p.afterPt) || 0}pt} #editor h1,#editor h2,#editor h3 {font-family:inherit;line-height:1.3;text-indent:0} #editor [data-material-role],#editor [data-source-number] {text-indent:0}`
+    : "";
 }
 function operationProblem(before, after, node, step, insertion = false) {
   if (
@@ -28822,30 +29144,12 @@ function duplicateOfDocument(text, except) {
       .toLowerCase();
   const candidate = signature(text);
   if (candidate.length < 70) return false;
-  const grams = (t) => {
-    const words = t.split(/\s+/),
-      result = new Set();
-    for (let i = 0; i < words.length - 2; i++)
-      result.add(words.slice(i, i + 3).join(" "));
-    return result;
-  };
-  const candidateGrams = grams(candidate);
-  return Array.from(editor.children).some((n) => {
-    if (n === except || n.dataset.materialId) return false;
-    const existing = signature(blockMD(n));
-    if (existing === candidate) return true;
-    if (existing.length >= 100 && candidate.includes(existing)) return true;
-    if (
-      Math.min(candidate.length, existing.length) /
-        Math.max(candidate.length, existing.length) <
-      0.7
-    )
-      return false;
-    const oldGrams = grams(existing);
-    if (Math.min(candidateGrams.size, oldGrams.size) < 8) return false;
-    const shared = [...candidateGrams].filter((g) => oldGrams.has(g)).length;
-    return shared / Math.max(candidateGrams.size, oldGrams.size) > 0.86;
-  });
+  return Array.from(editor.children).some(
+    (n) =>
+      n !== except &&
+      !n.dataset.materialId &&
+      signature(blockMD(n)) === candidate,
+  );
 }
 function applyScopedPatches(chunk, result) {
   const step = state.job?.step || state.selected,
@@ -28861,15 +29165,35 @@ function applyScopedPatches(chunk, result) {
     tails = new Map();
   const warn = (message) => noteFilteredResult(result, message + ".");
   const prepare = (text, old, node, insertion) => {
-    const cleaned = excludeUnverifiedDOIs(
-      old,
-      String(text),
-      new Set(extractDOIs(old)),
-    );
+    const isReference =
+      node &&
+      documentPlan().some((b) => b.node === node && b.role === "references");
+    const allowedDOIs = new Set([
+      ...extractDOIs(old),
+      ...(isReference
+        ? []
+        : referenceMap().flatMap((r) => extractDOIs(r.text))),
+    ]);
+    const cleaned = excludeUnverifiedDOIs(old, String(text), allowedDOIs);
+    const record = isReference
+      ? referenceMap().find((r) => r.id === node.dataset.blockId)
+      : null;
+    if (!isReference) cleaned.text = bodyCitations(cleaned.text);
+    if (record)
+      cleaned.text =
+        record.number +
+        ". " +
+        cleaned.text
+          .replace(/^\s*(?:\[\d+\]|\d+[.)])\s*/, "")
+          .replace(/\n+/g, " ")
+          .trim();
     if (cleaned.excluded.length)
-      warn(
-        "Добавленные DOI вне библиографии исключены; ссылки в тексте задаются номерами источников",
-      );
+      result.warnings = [
+        ...new Set([
+          ...(result.warnings || []),
+          "Непроверенные DOI вне библиографии исключены из предложения модели",
+        ]),
+      ];
     if (!cleaned.text.trim()) return null;
     if (!/^H[1-6]$/.test(node?.tagName || ""))
       cleaned.text = cleanReferenceCitations(
@@ -28887,6 +29211,17 @@ function applyScopedPatches(chunk, result) {
     }
     const box = document.createElement("div");
     box.innerHTML = markdownHTML(cleaned.text);
+    if (record) {
+      const p = document.createElement("p");
+      p.dataset.sourceNumber = record.number;
+      p.innerHTML = cleanHTML(
+        sanitize(
+          marked.parseInline(cleaned.text.replace(/^\s*\d+[.)]\s*/, "")),
+        ),
+      );
+      p.prepend(document.createTextNode(record.number + ". "));
+      box.replaceChildren(p);
+    }
     if (box.querySelector("img")) {
       warn("Изображение размещается только планом по исходному файлу");
       return null;
@@ -28927,6 +29262,11 @@ function applyScopedPatches(chunk, result) {
     if (normalizeText(change.text) === normalizeText(block.text)) continue;
     const fresh = prepare(change.text, block.text, block.node, false);
     if (!fresh) continue;
+    if (
+      normalizeText(fresh.map((n) => blockMD(n)).join("\n\n")) ===
+      normalizeText(blockMD(block.node))
+    )
+      continue;
     before.push(block.node.innerText);
     fresh.forEach((n, i) => {
       n.dataset.blockId = i ? uid() : block.id;
@@ -28936,6 +29276,16 @@ function applyScopedPatches(chunk, result) {
     block.node.replaceWith(...fresh);
     block.node = fresh.at(-1);
     after.push(fresh.map((n) => n.innerText).join("\n"));
+    result.appliedNotes = [
+      ...(result.appliedNotes || []),
+      (change.reason ? change.reason + ". " : "") +
+        "Исправлен фрагмент: «" +
+        fresh
+          .map((n) => n.textContent)
+          .join(" ")
+          .slice(0, 110) +
+        "»",
+    ];
     changed++;
   }
   for (const insertion of result.patches.insertions || []) {
@@ -29047,14 +29397,15 @@ function applyChunk(chunk, result) {
     String(result.text || ""),
     knownDOIs,
   );
-  result.text = filtered.text;
+  result.text = bodyCitations(filtered.text);
   if (filtered.excluded.length)
-    noteFilteredResult(
-      result,
-      "Добавления с непроверенными DOI исключены: " +
-        filtered.excluded.join(", ") +
-        ".",
-    );
+    result.warnings = [
+      ...new Set([
+        ...(result.warnings || []),
+        "Добавления с непроверенными DOI исключены: " +
+          filtered.excluded.join(", "),
+      ]),
+    ];
   try {
     protectResult(oldMD, result.text, result.formatted);
   } catch (e) {
@@ -29358,15 +29709,109 @@ async function runJob() {
         throw new DOMException("Остановлено", "AbortError");
       let event = null;
       if (step.edit) {
-        const change = applyChunk(c, result);
+        let change = applyChunk(c, result);
+        if (
+          (result.needsReview ||
+            (!change.changed && (result.attempted || result.patchCount))) &&
+          !controller.signal.aborted
+        ) {
+          const current = blocks().filter(
+            (b) =>
+              c.ids.includes(b.id) && !(change.blockIDs || []).includes(b.id),
+          );
+          if (current.length) {
+            progress(job, "Уточняем привязку неприменённых правок…");
+            const retryChunk = {
+              ...c,
+              ids: current.map((b) => b.id),
+              blocks: current.map((b) => ({ id: b.id, text: b.text })),
+              text: current.map((b) => b.text).join("\n\n"),
+            };
+            try {
+              const input = await fitAIInput(
+                {
+                  text: retryChunk.text,
+                  context: context.slice(0, 24000),
+                  requirements: (
+                    job.requirements +
+                    "\nИсправь предыдущий ответ: " +
+                    (result.warnings || []).join("; ") +
+                    ". Укажи точные b1,b2 из blocks. Не меняй эмпирические значения; исправляй текст вокруг них. Верни изменения только в доступные блоки."
+                  ).slice(0, 18000),
+                  sources,
+                  profile: job.profile,
+                  materials: job.step === 3 ? job.materialContext || "" : "",
+                },
+                job,
+                "repair-" + job.index,
+                controller.signal,
+              );
+              const retry = await apiRequest(
+                {
+                  action: "run",
+                  step: job.step,
+                  model: job.model,
+                  responseFormat: "patches-v1",
+                  blocks: retryChunk.blocks,
+                  ...input,
+                },
+                controller.signal,
+              );
+              const extra = applyChunk(retryChunk, retry);
+              if (!retry.cached) job.tokens += tokenCount(retry.usage);
+              if (extra.changed || !change.changed) {
+                change = {
+                  changed: change.changed + extra.changed,
+                  blockIDs: [
+                    ...(change.blockIDs || []),
+                    ...(extra.blockIDs || []),
+                  ],
+                  beforeText: [change.beforeText, extra.beforeText]
+                    .filter(Boolean)
+                    .join("\n"),
+                  afterText: [change.afterText, extra.afterText]
+                    .filter(Boolean)
+                    .join("\n"),
+                };
+                result = retry;
+              }
+            } catch (e) {
+              if (
+                controller.signal.aborted ||
+                ![
+                  "TRUNCATED",
+                  "PATCH_FORMAT",
+                  "PATCH_ID",
+                  "EMPTY_RESULT",
+                  "EMPTY_TEXT",
+                ].includes(e.code)
+              )
+                throw e;
+              result.needsReview = true;
+              result.warnings = [
+                ...(result.warnings || []),
+                "Модель не уточнила отклонённые предложения; применённые изменения сохранены",
+              ];
+            }
+          }
+        }
+        updateStageDiff(job);
         job.comments.push({
-          comment: result.comment || "Текст обновлён.",
+          comment: change.changed
+            ? "Изменено блоков: " +
+              change.changed +
+              ". " +
+              (result.appliedNotes || []).slice(0, 2).join("; ")
+            : "В этом фрагменте применимых изменений нет.",
           changed: change.changed,
           needsReview: Boolean(result.needsReview),
           warnings: result.warnings || [],
         });
         job.lastAppliedIDs = change.blockIDs || c.ids;
-        showFeedback(step, result.comment || "Текст обновлён.");
+        showFeedback(
+          step,
+          "Применено изменений в текущем фрагменте: " + change.changed + ".",
+        );
         event = {
           step: job.step,
           model: job.model,
@@ -29389,7 +29834,11 @@ async function runJob() {
       progress(job);
     }
     if (job.step === 10) {
-      state.formatProfile = formatProfileFromRequirements(job.requirements);
+      state.formatProfile = {
+        ...formatProfileFromRequirements(job.requirements),
+        ...(job.formatPlan || {}),
+      };
+      applyVisibleFormat();
       job.comments.push({
         comment:
           "Профиль экспорта применён по требованиям; параметры исходного Word не переписаны.",
@@ -29398,29 +29847,38 @@ async function runJob() {
         warnings: [],
       });
     }
+    updateStageDiff(job);
     let output;
     if (step.edit) {
-      output =
-        job.comments.length === 1
-          ? job.comments[0].comment
-          : "Обработано " +
-            job.chunks.length +
-            " фрагментов; изменено блоков: " +
-            job.comments.reduce((s, c) => s + c.changed, 0) +
-            ". " +
-            (job.comments.find((c) => c.changed)?.comment ||
-              "Текст не требовал изменений.");
-      if (job.materialFallbackCount)
+      const total = job.comments.reduce((sum, c) => sum + c.changed, 0);
+      const realChange = updateStageDiff(job);
+      const issues = [
+        ...new Set(job.comments.flatMap((c) => c.warnings || [])),
+      ];
+      const reviewComments = job.comments.filter((c) => c.needsReview);
+      output = realChange
+        ? "Изменения применены к документу. Обработано фрагментов: " +
+          job.chunks.length +
+          "; применено операций: " +
+          total +
+          ". Откройте «Посмотреть различия», чтобы увидеть результат всего этапа."
+        : "Документ не изменён: модель не предложила применимых правок. Новая версия не создана; этап можно повторить с уточнёнными требованиями.";
+      const plans = job.comments.filter((c) => c.changed).map((c) => c.comment);
+      if (plans.length)
         output +=
-          " Загруженные изображения добавлены с вашими подписями; проверьте их расположение.";
-      const reviewComments = job.comments
-        .filter((c) => c.needsReview)
-        .map((c) => c.comment);
-      if (reviewComments.length && !reviewComments.includes(output))
-        output += " " + [...new Set(reviewComments)].join(" ");
+          " " +
+          plans
+            .slice(0, 2)
+            .map((c) => c.slice(0, 350))
+            .join(" ");
+      if (issues.length)
+        output +=
+          " Не применены отдельные предложения: " +
+          issues.slice(0, 3).join("; ");
       state.results[job.step] = {
+        changed: realChange,
         needsReview: Boolean(
-          job.materialFallbackCount || reviewComments.length,
+          job.materialFallbackCount || reviewComments.length || !realChange,
         ),
         comment: output,
         text: "",
@@ -29448,7 +29906,11 @@ async function runJob() {
       date: new Date().toISOString(),
     };
     state.job = null;
-    snapshot("После шага " + job.step + " · " + step.label);
+    const afterVersion = snapshot(
+      "После шага " + job.step + " · " + step.label,
+    );
+    state.results[job.step].beforeVersion = job.beforeVersion;
+    state.results[job.step].afterVersion = afterVersion;
     await logEvent("step-complete", {
       step: job.step,
       model: job.model,
@@ -29577,11 +30039,20 @@ function showDiff() {
     el.textContent = part.value;
     box.append(el);
   }
-  showModal("Изменения последнего фрагмента", box);
+  if (lastDiff.formatBefore !== lastDiff.formatAfter) {
+    const note = document.createElement("p");
+    note.textContent =
+      "Оформление: " +
+      (lastDiff.formatBefore || "без профиля") +
+      " → " +
+      (lastDiff.formatAfter || "без профиля");
+    box.prepend(note);
+  }
+  showModal("Изменения всего этапа", box);
 }
 function versionText(html) {
   const template = document.createElement("template");
-  template.innerHTML = cleanHTML(html);
+  template.innerHTML = sanitize(html);
   const walk = (node) => {
     if (node.nodeType === Node.TEXT_NODE) return node.textContent;
     if (node.nodeType !== Node.ELEMENT_NODE) return "";
@@ -29614,6 +30085,7 @@ function showHistory() {
       label: "Текущий текст",
       date: new Date().toISOString(),
       html: currentHTML,
+      formatProfile: structuredClone(state.formatProfile || null),
     },
   ];
   const container = document.createElement("div"),
@@ -29697,6 +30169,7 @@ function showHistory() {
         state.results = structuredClone(v.results || {});
         state.sources = structuredClone(v.sources || []);
         state.formatProfile = structuredClone(v.formatProfile || null);
+        applyVisibleFormat();
         state.removedSources = structuredClone(v.removedSources || []);
         state.affectedSourcePassages = structuredClone(
           v.affectedSourcePassages || [],
@@ -29771,6 +30244,10 @@ function showHistory() {
           (before.html !== after.html
             ? "; оформление или изображения могут отличаться"
             : "");
+    const formatChanged =
+      JSON.stringify(before.formatProfile || null) !==
+      JSON.stringify(after.formatProfile || null);
+    if (formatChanged) summary.textContent += " · Оформление изменено";
     comparison.replaceChildren();
     for (const [side, v] of [
       ["before", before],
@@ -29811,6 +30288,13 @@ function showHistory() {
         }
       }
       if (!oldText && !newText) content.textContent = "Пустой документ";
+      if (formatChanged) {
+        const format = document.createElement("p");
+        format.className = "micro";
+        format.textContent =
+          "Оформление: " + JSON.stringify(v.formatProfile || "без профиля");
+        panel.append(format);
+      }
       panel.append(heading, content);
       comparison.append(panel);
     }
@@ -29860,6 +30344,8 @@ function showSettings() {
       sessionStorage.setItem("vkr-access", $("accessInput").value.trim());
       requestCache.clear();
       $("modal").close();
+      lastDiff = state.lastDiff || { before: "", after: "" };
+      applyVisibleFormat();
       health();
       toast("Настройки подключения сохранены", "success");
     } catch (e) {
@@ -30265,7 +30751,10 @@ async function docxBlob() {
           alignment:
             d.AlignmentType[n.style.textAlign?.toUpperCase()] ||
             d.AlignmentType.JUSTIFIED,
-          spacing: { line: 360, after: profile.afterPt * 20 },
+          spacing: {
+            line: Math.round(profile.line * 240),
+            after: profile.afterPt * 20,
+          },
           indent: { firstLine: heading ? 0 : mm(profile.indentMm) },
         }),
       );
@@ -30278,7 +30767,12 @@ async function docxBlob() {
         name: "Heading " + (i + 1),
         basedOn: "Normal",
         next: "Normal",
-        run: { font: profile.font, size: 28, bold: true, color: "000000" },
+        run: {
+          font: profile.font,
+          size: profile.fontPt * 2,
+          bold: true,
+          color: "000000",
+        },
         paragraph: {
           spacing: { before: 200, after: 200 },
           indent: { firstLine: 0 },
@@ -30286,8 +30780,13 @@ async function docxBlob() {
       })),
       default: {
         document: {
-          run: { font: "Times New Roman", size: 28 },
-          paragraph: { spacing: { line: 360 } },
+          run: { font: profile.font, size: profile.fontPt * 2 },
+          paragraph: {
+            spacing: {
+              line: Math.round(profile.line * 240),
+              after: profile.afterPt * 20,
+            },
+          },
         },
       },
     },
@@ -30319,7 +30818,7 @@ function installPrintStyles() {
   if ($("vkrPrintStyles")) return;
   const style = document.createElement("style");
   style.id = "vkrPrintStyles";
-  style.textContent = `.vkr-print-page{box-sizing:border-box!important}.vkr-print-page *{max-width:100%;box-sizing:border-box}.vkr-print-page table{table-layout:fixed!important;border-collapse:collapse!important;width:100%!important;font:12pt/1.25 'Times New Roman',serif!important;margin:8pt 0!important}.vkr-print-page td,.vkr-print-page th{font:12pt/1.25 'Times New Roman',serif!important;overflow-wrap:anywhere!important;word-break:break-word!important;white-space:normal!important;text-indent:0!important;padding:3pt!important;border:0.5pt solid #777!important}.vkr-print-page h1,.vkr-print-page h2,.vkr-print-page h3,.vkr-print-page h4{font-family:'Times New Roman',serif!important;font-size:14pt!important;line-height:1.4!important;color:#000!important;overflow-wrap:anywhere}.vkr-print-page p{overflow-wrap:anywhere}.vkr-print-page img{max-width:100%;height:auto}.vkr-print-page pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11pt}`;
+  style.textContent = `.vkr-print-page{box-sizing:border-box!important}.vkr-print-page *{max-width:100%;box-sizing:border-box}.vkr-print-page table{table-layout:fixed!important;border-collapse:collapse!important;width:100%!important;font:12pt/1.25 'Times New Roman',serif!important;margin:8pt 0!important}.vkr-print-page td,.vkr-print-page th{font:12pt/1.25 'Times New Roman',serif!important;overflow-wrap:anywhere!important;word-break:break-word!important;white-space:normal!important;text-indent:0!important;padding:3pt!important;border:0.5pt solid #777!important}.vkr-print-page h1,.vkr-print-page h2,.vkr-print-page h3,.vkr-print-page h4{font-family:inherit!important;font-size:inherit!important;line-height:1.4!important;color:#000!important;overflow-wrap:anywhere}.vkr-print-page p{overflow-wrap:anywhere;margin:0 0 var(--paragraph-after,6pt)!important;text-indent:var(--paragraph-indent,12.5mm)}.vkr-print-page [data-source-number],.vkr-print-page [data-material-role]{text-indent:0}.vkr-print-page img{max-width:100%;height:auto}.vkr-print-page pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11pt}`;
   document.head.append(style);
 }
 function pdfPage() {
@@ -30327,9 +30826,15 @@ function pdfPage() {
   const profile = state.formatProfile || formatProfileFromRequirements("");
   const page = document.createElement("div");
   page.className = "editor vkr-print-page";
+  page.style.setProperty("--paragraph-after", profile.afterPt + "pt");
+  page.style.setProperty("--paragraph-indent", profile.indentMm + "mm");
   page.style.cssText =
-    "font-family:Times New Roman,serif;font-size:14pt;line-height:1.5;padding:0;background:white;color:black;max-height:none;min-height:0;overflow:visible;width:" +
+    `font-family:${profile.font},serif;font-size:${profile.fontPt}pt;line-height:${profile.line};padding:0;background:white;color:black;max-height:none;min-height:0;overflow:visible;width:` +
     (210 - profile.left - profile.right) +
+    "mm;--paragraph-after:" +
+    profile.afterPt +
+    "pt;--paragraph-indent:" +
+    profile.indentMm +
     "mm;";
   return page;
 }
@@ -30585,6 +31090,7 @@ async function init() {
       }
     }
     STORAGE = "vkr-project:" + state.projectId;
+    lastDiff = state.lastDiff || { before: "", after: "" };
     hydrateProfile();
     renderAttachments();
     if (!state.job) selectStep(state.selected);
@@ -30597,13 +31103,15 @@ async function init() {
     controls();
     persist();
     if (localStorage.getItem(STORAGE)) localStorage.removeItem(LEGACY_STORAGE);
-    $("probeModel").onclick = probeModel;
     $("modelSelect").addEventListener("change", showModelStatus);
+    applyVisibleFormat();
     health();
   } catch (e) {
     toast("Не удалось восстановить черновик: " + e.message, "error");
     controls();
   }
+  $("abstractTool").onclick = () => runDocumentTool("abstract");
+  $("glossaryTool").onclick = () => runDocumentTool("glossary");
   $("uploadBtn").onclick = () => $("docxUpload").click();
   $("docxUpload").onchange = (e) => uploadDocx(e.target.files[0]);
   $("clearBtn").onclick = async () => {
