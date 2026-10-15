@@ -908,10 +908,12 @@
           transform: translateY(0);
         }
       }
+      .project-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+      .project-bar select { flex:1; min-width:160px; max-width:100%; }
+      .project-bar label { font-weight:600; font-size:13px; }
       @media (min-width: 1200px) {
         .action-sticky {
-          position: sticky;
-          top: 16px;
+          position: static;
         }
       }
       @media (max-width: 1100px) {
@@ -1151,6 +1153,13 @@
           ><span id="connectionText">Проверяем API…</span>
         </div>
       </div>
+      <section class="glass panel project-bar" aria-label="Локальные проекты">
+        <label for="projectSelect">Мои проекты <span class="micro">· только в этом браузере</span></label>
+        <select id="projectSelect" aria-label="Текущий проект"></select>
+        <button id="newProjectBtn" class="btn secondary">＋ Новый</button>
+        <button id="renameProjectBtn" class="btn secondary">Переименовать</button>
+        <button id="deleteProjectBtn" class="btn secondary">Удалить</button>
+      </section>
       <div class="layout">
         <div class="left">
           <div class="stats fade-in">
@@ -25879,6 +25888,42 @@ function normalizeText(s) {
     .replace(/\s+/g, " ")
     .trim();
 }
+function sectionTitle(text) {
+  return normalizeText(
+    String(text)
+      .normalize("NFKC")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/[*_`#]/g, "")
+      .replace(/^\s*(?:(?:\d+(?:\.\d+)*|[IVX]+)[.)]?\s+)/i, ""),
+  )
+    .replace(/\s*[:.]+$/, "")
+    .trim();
+}
+function isBibliographyHeading(text) {
+  return /^(?:(?:список|перечень)\s+(?:(?:использованн(?:ой|ых)|цитируем(?:ой|ых)|библиографических|информационных)\s+)*(?:литературы|источников|литературы\s+и\s+источников)|библиографический\s+список|библиография|литература|источники|references|bibliography|works cited)$/i.test(
+    sectionTitle(text),
+  );
+}
+function bibliographyBlocks(all) {
+  const start = all.findIndex((b) => isBibliographyHeading(b.text));
+  if (start < 0) return [];
+  let end = all.length;
+  const level = all[start].text.match(/^\s*(#{1,6})\s/)?.[1].length || 6;
+  for (let i = start + 1; i < all.length; i++) {
+    const title = sectionTitle(all[i].text);
+    const nextLevel = all[i].text.match(/^\s*(#{1,6})\s/)?.[1].length;
+    if (
+      /^(?:приложени[ея]|appendi[хx]|appendices|заключение)(?:\s|$)/i.test(
+        title,
+      ) ||
+      (nextLevel && nextLevel <= level && !isBibliographyHeading(all[i].text))
+    ) {
+      end = i;
+      break;
+    }
+  }
+  return all.slice(start, end);
+}
 function extractDOIs(s) {
   return [
     ...new Set(
@@ -25965,12 +26010,16 @@ function protectResult(oldText, newText, formatted = true) {
 "use strict";
 const DEFAULT_API =
   "https://d5d37c8mt9t2v19cbku9.g2n58e0c.apigw.yandexcloud.net/";
-const STORAGE = "vkr-kontur-v2",
-  $ = (id) => document.getElementById(id),
+const LEGACY_STORAGE = "vkr-kontur-v2",
+  REGISTRY = "vkr-projects-v1";
+let STORAGE = LEGACY_STORAGE;
+const $ = (id) => document.getElementById(id),
   editor = $("editor");
 function emptyState() {
   return {
     version: 2,
+    projectId: uid(),
+    projectName: "Новая ВКР",
     html: "",
     fileName: "",
     profile: {},
@@ -25989,6 +26038,7 @@ function emptyState() {
 }
 let state = emptyState(),
   running = false,
+  switching = false,
   controller = null,
   ticker = null,
   lastDiff = { before: "", after: "" },
@@ -26004,6 +26054,85 @@ function uid() {
   return crypto.randomUUID
     ? crypto.randomUUID()
     : "b" + Date.now().toString(36) + Math.random().toString(36).slice(2);
+}
+function projectRegistry() {
+  try {
+    return JSON.parse(localStorage.getItem(REGISTRY)) || { projects: [] };
+  } catch {
+    return { projects: [] };
+  }
+}
+function renderProjects() {
+  const registry = projectRegistry();
+  $("projectSelect").replaceChildren();
+  for (const p of registry.projects) {
+    const option = document.createElement("option");
+    option.value = p.id;
+    option.textContent = p.name;
+    $("projectSelect").append(option);
+  }
+  $("projectSelect").value = state.projectId;
+}
+function registerProject() {
+  const registry = projectRegistry();
+  const meta = {
+    id: state.projectId,
+    name: state.projectName || "Новая ВКР",
+    updated: Date.now(),
+  };
+  const index = registry.projects.findIndex((p) => p.id === state.projectId);
+  if (index < 0) registry.projects.push(meta);
+  else registry.projects[index] = meta;
+  registry.active = state.projectId;
+  localStorage.setItem(REGISTRY, JSON.stringify(registry));
+  sessionStorage.setItem("vkr-active-project", state.projectId);
+  renderProjects();
+}
+function releaseInterrupted(reason = "Новый запуск") {
+  if (running || !state.job) return;
+  const step = state.job.step;
+  snapshot("Частично выполненный шаг " + step);
+  state.job = null;
+  state.steps[step] = {
+    status: "error",
+    reason,
+    date: new Date().toISOString(),
+  };
+  controls();
+}
+async function openProject(id, create = false) {
+  if (running || switching) return;
+  switching = true;
+  controls();
+  try {
+    clearTimeout(saveTimer);
+    clearTimeout(manualTimer);
+    await eventChain;
+    persist();
+    const saved = create ? null : localStorage.getItem("vkr-project:" + id);
+    if (!create && !saved) throw new Error("Проект не найден в этом браузере.");
+    state = create ? emptyState() : { ...emptyState(), ...JSON.parse(saved) };
+    STORAGE = "vkr-project:" + state.projectId;
+    requestCache.clear();
+    selectedIDs = [];
+    lastDiff = { before: "", after: "" };
+    feedbackText = "";
+    $("feedback").hidden = true;
+    editor.innerHTML = await unpackHTML(state.html);
+    for (const a of state.materials) {
+      if (a.type === "image" && !a.data)
+        a.data = (await assetGet(a.id).catch(() => null))?.data || "";
+    }
+    if (state.job) state.steps[state.job.step] = { status: "error" };
+    hydrateProfile();
+    renderAttachments();
+    selectStep(state.selected);
+    controls();
+    persist();
+  } finally {
+    switching = false;
+    controls();
+  }
 }
 function toast(message, type = "info") {
   const el = document.createElement("div");
@@ -26302,6 +26431,7 @@ function persist() {
   };
   try {
     localStorage.setItem(STORAGE, JSON.stringify(payload));
+    registerProject();
     $("saveStatus").textContent =
       "Сохранено · " +
       new Date().toLocaleTimeString("ru-RU", {
@@ -26317,6 +26447,7 @@ function persist() {
       }));
       try {
         localStorage.setItem(STORAGE, JSON.stringify(payload));
+        registerProject();
         $("saveStatus").textContent =
           "Сохранено · история сокращена до 2 версий";
         return;
@@ -26398,6 +26529,7 @@ function db() {
   return dbPromise;
 }
 async function assetPut(id, value) {
+  id = state.projectId + ":" + id;
   const d = await db();
   return new Promise((resolve, reject) => {
     const tx = d.transaction("assets", "readwrite");
@@ -26407,10 +26539,18 @@ async function assetPut(id, value) {
   });
 }
 async function assetGet(id) {
+  const legacyId = id;
+  id = state.projectId + ":" + id;
+  const legacy = state.legacyAssets;
   const d = await db();
   return new Promise((resolve, reject) => {
     const req = d.transaction("assets").objectStore("assets").get(id);
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      if (req.result !== undefined || !legacy) return resolve(req.result);
+      const old = d.transaction("assets").objectStore("assets").get(legacyId);
+      old.onsuccess = () => resolve(old.result);
+      old.onerror = () => reject(old.error);
+    };
     req.onerror = () => reject(req.error);
   });
 }
@@ -26446,7 +26586,7 @@ function renderSteps() {
             ? "done"
             : "") +
       (!unlocked ? " locked" : "");
-    b.disabled = running || !unlocked || Boolean(state.job);
+    b.disabled = running || switching || !unlocked;
     b.innerHTML =
       '<span class="step-num">' +
       (st === "running"
@@ -26483,7 +26623,7 @@ function renderSteps() {
   updateStats();
 }
 function selectStep(id) {
-  if (running || state.job || !isUnlocked(id, state.steps)) return;
+  if (running || !isUnlocked(id, state.steps)) return;
   state.selected = id;
   const s = STEPS[id - 1];
   $("selectedName").textContent = id + ". " + s.label;
@@ -26526,12 +26666,20 @@ function modelChanged() {
   scheduleSave();
 }
 function controls() {
-  editor.contentEditable = String(!running && !state.job);
-  $("applyBtn").disabled = running || Boolean(state.job);
+  const busy = running || switching;
+  editor.contentEditable = String(!busy);
+  $("applyBtn").disabled = busy;
   $("cancelBtn").hidden = !running;
   $("resumeBtn").hidden = running || !state.job;
+  $("resumeBtn").textContent = state.job
+    ? "Продолжить шаг " + state.job.step
+    : "Продолжить";
   $("discardJobBtn").hidden = running || !state.job;
   [
+    "projectSelect",
+    "newProjectBtn",
+    "renameProjectBtn",
+    "deleteProjectBtn",
     "uploadBtn",
     "clearBtn",
     "resetBtn",
@@ -26546,10 +26694,10 @@ function controls() {
     "topic",
     "program",
     "deadline",
-  ].forEach((id) => ($(id).disabled = running || Boolean(state.job)));
+  ].forEach((id) => ($(id).disabled = busy));
   document
     .querySelectorAll(".tool,.remove,.attachment textarea")
-    .forEach((n) => (n.disabled = running || Boolean(state.job)));
+    .forEach((n) => (n.disabled = busy));
   renderSteps();
 }
 function showModal(title, content) {
@@ -26795,7 +26943,7 @@ function renderAttachments() {
     remove.className = "remove";
     remove.textContent = "×";
     remove.title = "Убрать " + a.name;
-    remove.disabled = running || Boolean(state.job);
+    remove.disabled = running;
     remove.onclick = () => {
       state.materials = state.materials.filter((x) => x.id !== a.id);
       renderAttachments();
@@ -26810,7 +26958,7 @@ function renderAttachments() {
       caption.setAttribute("aria-label", "Описание " + a.name);
       caption.value = a.caption || "";
       caption.maxLength = 500;
-      caption.disabled = running || Boolean(state.job);
+      caption.disabled = running;
       caption.oninput = () => {
         a.caption = caption.value;
         assetPut(a.id, a).catch(() => {});
@@ -26845,7 +26993,8 @@ async function imageData(file) {
   return canvas.toDataURL("image/png");
 }
 async function addFiles(files) {
-  if (running || state.job) return;
+  if (running || switching) return;
+  const project = state;
   for (const file of files) {
     try {
       if (state.materials.length >= 15)
@@ -26929,7 +27078,9 @@ async function addFiles(files) {
           file.name +
             ": содержимое превышает 6000 символов. Выделите нужные данные.",
         );
+      if (state !== project) return;
       await assetPut(a.id, a);
+      if (state !== project) return;
       state.materials.push(a);
       renderAttachments();
       persist();
@@ -27098,11 +27249,13 @@ async function auditDocx(buffer) {
   };
 }
 async function uploadDocx(file) {
-  if (!file || running || state.job) return;
+  releaseInterrupted("Загрузка документа");
+  if (!file || running || switching) return;
   if (!/\.docx$/i.test(file.name) || file.size > 10 * 1024 * 1024) {
     toast("Загрузите DOCX до 10 МБ.", "error");
     return;
   }
+  const project = state;
   $("uploadBtn").disabled = true;
   $("uploadBtn").textContent = "Читаем документ…";
   try {
@@ -27111,9 +27264,11 @@ async function uploadDocx(file) {
       audit = await auditDocx(buffer),
       result = await mammoth.convertToHtml({ arrayBuffer: buffer }),
       html = cleanHTML(result.value);
+    if (state !== project) return;
     if (!html.trim()) throw new Error("В документе не найден текст.");
     snapshot("До загрузки нового файла");
     await assetPut("original-docx", file);
+    if (state !== project) return;
     editor.innerHTML = html;
     state.fileName = file.name;
     state.docxAudit = audit;
@@ -27158,27 +27313,8 @@ async function uploadDocx(file) {
     $("docxUpload").value = "";
   }
 }
-function bibliographyBlocks(all) {
-  const start = all.findIndex((b) =>
-    /^(?:#{1,6}\s*)?(?:\d+[.\s]+)?(?:список\s+(?:использованн(?:ой|ых)\s+)?(?:литературы|источников)|библиография|литература|references|bibliography)\s*[:.]?$/i.test(
-      normalizeText(b.text),
-    ),
-  );
-  if (start < 0) return [];
-  let end = all.length;
-  for (let i = start + 1; i < all.length; i++) {
-    if (
-      /^#{1,2}\s+/.test(all[i].text) &&
-      /приложени|appendix|заключени/i.test(all[i].text)
-    ) {
-      end = i;
-      break;
-    }
-  }
-  return all.slice(start, end);
-}
 function captureSelection() {
-  if (running || state.job) return;
+  if (running) return;
   const s = window.getSelection();
   if (!s?.rangeCount || s.isCollapsed) return;
   const range = s.getRangeAt(0);
@@ -27336,12 +27472,30 @@ function localDiagnosis(all) {
   const plain = editor.innerText,
     stats = statsFor(plain),
     headings = all.filter((b) => /^#{1,6}\s/.test(b.text)),
-    title = (s) => s.replace(/[*_`#]/g, "").trim();
+    title = sectionTitle;
+  const sections = headings.map((h, i) => {
+    const from = all.indexOf(h),
+      to = i + 1 < headings.length ? all.indexOf(headings[i + 1]) : all.length;
+    return {
+      heading: title(h.text),
+      words: statsFor(
+        all
+          .slice(from + 1, to)
+          .map((b) => b.text)
+          .join("\n"),
+      ).words,
+    };
+  });
   const intro = all.some((b) => /^введение[.:]?$/i.test(title(b.text))),
     conclusion = all.some((b) =>
       /^(заключение|выводы)[.:]?$/i.test(title(b.text)),
     ),
     bib = bibliographyBlocks(all),
+    entries = bib
+      .slice(1)
+      .flatMap((b) => b.text.split(/\n/))
+      .filter((t) => t.trim()),
+    bibDOIs = extractDOIs(bib.map((b) => b.text).join("\n")),
     priorities = [];
   if (!intro)
     priorities.push(
@@ -27359,6 +27513,21 @@ function localDiagnosis(all) {
     priorities.push(
       "Добавить список литературы: без него невозможно проверить источники.",
     );
+  if (bib.length && !entries.length)
+    priorities.push(
+      "Раздел библиографии найден, но записей под ним нет. Добавить источники.",
+    );
+  if (bib.length && entries.length && !bibDOIs.length)
+    priorities.push(
+      "В библиографии не найдены DOI. Это допустимо для книг и других изданий без DOI; метаданные таких записей нужно проверить отдельно.",
+    );
+  const emptySections = sections.filter((x) => !x.words);
+  if (emptySections.length)
+    priorities.push(
+      "Проверить разделы без собственного текста (они могут содержать только подразделы): " +
+        emptySections.map((x) => x.heading).join("; ") +
+        ".",
+    );
   if (!priorities.length)
     priorities.push(
       "Основные структурные элементы найдены. Сопоставить введение, результаты и заключение по смыслу; это требует содержательной проверки.",
@@ -27368,9 +27537,17 @@ function localDiagnosis(all) {
     `Объём: ${stats.chars.toLocaleString("ru")} символов, ${stats.words.toLocaleString("ru")} слов. Примерно ${Math.ceil(stats.chars / 1800)} текстовых страниц при 1800 символах на страницу; это не фактическая пагинация Word.`,
     `Введение: ${intro ? "найдено" : "не найдено как отдельный заголовок"}. Заключение: ${conclusion ? "найдено" : "не найдено как отдельный заголовок"}. Библиография: ${bib.length ? "найдена" : "не найдена"}.`,
     `Заголовков: ${headings.length}. Таблиц: ${editor.querySelectorAll("table").length}. Изображений: ${editor.querySelectorAll("img").length}. DOI в тексте: ${extractDOIs(plain).length}; их существование здесь ещё не проверяется.`,
+    bib.length
+      ? `ИСТОЧНИКИ\nРаздел «${title(bib[0].text)}» найден. Строк записей: ${entries.length}; уникальных DOI в разделе: ${bibDOIs.length}. Строки не равны числу публикаций: одна запись может занимать несколько строк. Наличие записи и DOI не подтверждает существование или качество источника.`
+      : "ИСТОЧНИКИ\nОтдельный раздел не распознан. DOI в основном тексте не заменяют библиографию.",
     "КАРТА РАБОТЫ",
     headings.length
-      ? headings.map((b) => title(b.text)).join("\n")
+      ? sections
+          .map(
+            (x) =>
+              x.heading + " — " + x.words + " слов до следующего заголовка",
+          )
+          .join("\n")
       : "Используйте H1/H2/H3 в тулбаре или исправьте стили исходного DOCX.",
     "ПЕРВООЧЕРЕДНЫЕ ДЕЙСТВИЯ",
     priorities.map((x, i) => i + 1 + ". " + x).join("\n"),
@@ -27479,7 +27656,8 @@ async function finishLocal(step, text) {
   toast("Готово без AI-запросов: " + step.label, "success");
 }
 async function applyStep() {
-  if (running || state.job) return;
+  if (running || switching) return;
+  releaseInterrupted();
   const step = STEPS[state.selected - 1];
   if (!editor.innerText.trim()) {
     toast("Загрузите ВКР или вставьте текст.", "error");
@@ -27791,15 +27969,13 @@ async function runJob() {
         context =
           "Журнал подтверждённых изменений: " +
           JSON.stringify(
-            state.events
-              .slice(-15)
-              .map((e) => ({
-                date: e.date,
-                type: e.type,
-                step: e.step,
-                model: e.model,
-                changedBlocks: e.changedBlocks,
-              })),
+            state.events.slice(-15).map((e) => ({
+              date: e.date,
+              type: e.type,
+              step: e.step,
+              model: e.model,
+              changedBlocks: e.changedBlocks,
+            })),
           ) +
           "\n" +
           context;
@@ -28300,10 +28476,13 @@ async function restoreBackup(file) {
       throw new Error("Некорректный формат проекта.");
     if (
       !confirm(
-        "Открыть резервную копию? Текущий проект будет заменён. Скачайте его копию, если он нужен.",
+        "Открыть резервную копию как отдельный проект? Текущая работа сохранится.",
       )
     )
       return;
+    persist();
+    await openProject(null, true);
+    const importedProjectId = state.projectId;
     for (const [id, a] of Object.entries(b.assets || {})) {
       if (
         /^[a-zA-Z0-9-]{1,100}$/.test(id) &&
@@ -28329,10 +28508,18 @@ async function restoreBackup(file) {
     state = {
       ...emptyState(),
       ...b,
+      projectId: importedProjectId,
+      projectName: (
+        b.projectName ||
+        b.profile?.topic ||
+        "Импортированная ВКР"
+      ).slice(0, 120),
+      legacyAssets: false,
       materials: safeMaterials,
       job: null,
       selected: Math.min(14, Math.max(1, Number(b.selected) || 1)),
     };
+    delete state.assets;
     state.history = state.history
       .slice(-8)
       .map((h) => ({ ...h, html: cleanHTML(h.html) }));
@@ -28681,11 +28868,17 @@ async function init() {
     return;
   }
   try {
+    const registry = projectRegistry();
+    const active =
+      sessionStorage.getItem("vkr-active-project") || registry.active;
+    if (active && registry.projects.some((p) => p.id === active))
+      STORAGE = "vkr-project:" + active;
     const saved = localStorage.getItem(STORAGE);
     if (saved) {
       const b = JSON.parse(saved);
       if (b.version === 2 && typeof b.html === "string") {
         state = { ...state, ...b };
+        if (STORAGE === LEGACY_STORAGE) state.legacyAssets = true;
         editor.innerHTML = await unpackHTML(state.html);
         for (const a of state.materials) {
           if (a.type === "image" && !a.data) {
@@ -28701,6 +28894,7 @@ async function init() {
         }
       }
     }
+    STORAGE = "vkr-project:" + state.projectId;
     hydrateProfile();
     renderAttachments();
     if (!state.job) selectStep(state.selected);
@@ -28711,6 +28905,8 @@ async function init() {
         "Операция прервана · готовые части сохранены";
     }
     controls();
+    persist();
+    if (localStorage.getItem(STORAGE)) localStorage.removeItem(LEGACY_STORAGE);
     health();
   } catch (e) {
     toast("Не удалось восстановить черновик: " + e.message, "error");
@@ -28720,6 +28916,7 @@ async function init() {
   $("docxUpload").onchange = (e) => uploadDocx(e.target.files[0]);
   $("clearBtn").onclick = async () => {
     if (!confirm("Очистить текст? Текущая версия останется в истории.")) return;
+    releaseInterrupted("Очистка текста");
     snapshot("Перед очисткой");
     editor.replaceChildren();
     state.fileName = "";
@@ -28734,23 +28931,54 @@ async function init() {
     updateStats();
     persist();
   };
-  $("resetBtn").onclick = () => {
+  $("resetBtn").onclick = () =>
+    openProject(null, true).catch((e) => toast(e.message, "error"));
+  $("newProjectBtn").onclick = $("resetBtn").onclick;
+  $("projectSelect").onchange = (e) =>
+    openProject(e.target.value).catch((err) => toast(err.message, "error"));
+  $("renameProjectBtn").onclick = () => {
+    const name = prompt("Название проекта", state.projectName);
+    if (name?.trim()) {
+      state.projectName = name.trim().slice(0, 120);
+      persist();
+    }
+  };
+  $("deleteProjectBtn").onclick = async () => {
     if (
       !confirm(
-        "Создать новую работу? Сначала скачайте резервную копию, если нужно сохранить текущий проект.",
+        "Удалить этот локальный проект? Сначала скачайте копию, если она нужна.",
       )
     )
       return;
-    editor.replaceChildren();
-    state = emptyState();
-    selectedIDs = [];
-    hydrateProfile();
-    renderAttachments();
-    selectStep(1);
-    controls();
-    persist();
+    const id = state.projectId;
+    const registry = projectRegistry();
+    registry.projects = registry.projects.filter((p) => p.id !== id);
+    // Open another project before deleting so openProject cannot save the removed project back.
+    const next = registry.projects[0]?.id;
+    await openProject(next, !next);
+    const current = projectRegistry();
+    current.projects = current.projects.filter((p) => p.id !== id);
+    localStorage.setItem(REGISTRY, JSON.stringify(current));
+    localStorage.removeItem("vkr-project:" + id);
+    const d = await db();
+    await new Promise((resolve, reject) => {
+      const tx = d.transaction("assets", "readwrite");
+      const store = tx.objectStore("assets"),
+        req = store.openCursor();
+      req.onsuccess = () => {
+        const c = req.result;
+        if (!c) return;
+        if (String(c.key).startsWith(id + ":")) c.delete();
+        c.continue();
+      };
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    renderProjects();
+    toast("Проект удалён");
   };
   editor.addEventListener("input", () => {
+    releaseInterrupted("Ручная правка; для продолжения запустите шаг заново");
     recordManualEdit();
     assignBlocks();
     updateStats();
@@ -28758,6 +28986,7 @@ async function init() {
   });
   editor.addEventListener("paste", (e) => {
     e.preventDefault();
+    releaseInterrupted("Вставка текста");
     const html = e.clipboardData.getData("text/html"),
       text = e.clipboardData.getData("text/plain");
     document.execCommand(
@@ -28773,6 +29002,7 @@ async function init() {
   document.querySelectorAll(".tool").forEach((b) => {
     b.onmousedown = (e) => e.preventDefault();
     b.onclick = () => {
+      releaseInterrupted("Форматирование текста");
       editor.focus();
       document.execCommand(b.dataset.cmd, false, b.dataset.val || null);
       assignBlocks();
@@ -28802,11 +29032,13 @@ async function init() {
   $("stepFileInput").onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const id = state.selected;
+    const id = state.selected,
+      project = state;
     $("stepUploadBtn").disabled = true;
     $("stepFileName").textContent = "Извлекаем требования…";
     try {
       const text = await readRequirements(file);
+      if (state !== project) return;
       state.requirements[id] = { name: file.name, text };
       if (state.selected === id) {
         $("requirements").value = text;
@@ -28842,6 +29074,7 @@ async function init() {
       toast("Нет согласия на внешнюю обработку.", "error");
       return;
     }
+    if (state.job) selectStep(state.job.step);
     runJob();
   };
   $("discardJobBtn").onclick = () => {
@@ -28878,7 +29111,7 @@ async function init() {
     }
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
       e.preventDefault();
-      if (!running && !state.job) applyStep();
+      if (!running) applyStep();
     }
   });
   setInterval(() => {
