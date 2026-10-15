@@ -2,7 +2,7 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="application-version" content="2.2.0" />
+    <meta name="application-version" content="2.3.0" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="theme-color" content="#4f46e5" />
     <title>ВКР-Контур — от черновика до защиты</title>
@@ -26507,7 +26507,12 @@ function scheduleSave() {
 }
 function snapshot(label) {
   const html = packHTML(cleanHTML(editor.innerHTML));
-  if (state.history.at(-1)?.html === html) return;
+  if (
+    state.history.at(-1)?.html === html &&
+    JSON.stringify(state.history.at(-1)?.formatProfile || null) ===
+      JSON.stringify(state.formatProfile || null)
+  )
+    return;
   state.history.push({
     id: uid(),
     label,
@@ -26516,6 +26521,7 @@ function snapshot(label) {
     steps: structuredClone(state.steps),
     results: structuredClone(state.results),
     sources: structuredClone(state.sources),
+    formatProfile: structuredClone(state.formatProfile || null),
   });
   state.history = state.history.slice(-8);
 }
@@ -26673,7 +26679,7 @@ function selectStep(id) {
   state.selected = id;
   const s = STEPS[id - 1];
   $("selectedName").textContent = id + ". " + s.label;
-  $("selectedMode").textContent = [1, 14].includes(s.id)
+  $("selectedMode").textContent = [1, 3, 4, 6, 10, 11, 14].includes(s.id)
     ? "Локальный анализ · без расхода AI-токенов"
     : s.edit
       ? "Правки · применяются автоматически по фрагментам"
@@ -26779,7 +26785,8 @@ async function apiRequest(body, signal) {
     hit = requestCache.get(key);
   if (hit && hit.at > Date.now() - 300000)
     return { ...hit.value, cached: true };
-  const cacheId = "response:" + (await digest(apiEndpoint() + "\n" + key));
+  const cacheId =
+    "response:" + (await digest("pipeline-2.3\n" + apiEndpoint() + "\n" + key));
   const cacheTTL = ["run", "synthesize"].includes(body.action)
     ? 86400000
     : 3600000;
@@ -27082,10 +27089,15 @@ async function addFiles(files) {
       } else if (["xlsx", "xls", "csv"].includes(ext)) {
         if (!window.XLSX) throw new Error("Не загрузилась библиотека таблиц.");
         a.type = "table";
-        const wb = XLSX.read(await file.arrayBuffer(), {
-          type: "array",
-          cellDates: true,
-        });
+        const wb = XLSX.read(
+          ext === "csv" ? await file.text() : await file.arrayBuffer(),
+          {
+            type: ext === "csv" ? "string" : "array",
+            cellDates: true,
+            raw: true,
+          },
+        );
+        a.sheets = [];
         let table = "";
         for (const sheet of wb.SheetNames) {
           const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheet], {
@@ -27104,6 +27116,7 @@ async function addFiles(files) {
               "В таблице больше 20 колонок. Загрузите нужную выборку.",
             );
           if (!rows.length) continue;
+          a.sheets.push({ name: sheet, rows });
           table += "\nЛист: " + sheet + "\n";
           const width = Math.max(...rows.map((r) => r.length));
           table +=
@@ -27131,7 +27144,7 @@ async function addFiles(files) {
           a.extracted = JSON.stringify(JSON.parse(a.extracted), null, 2);
         }
       } else throw new Error("Неподдерживаемый формат: " + ext);
-      if (a.extracted.length > 6000)
+      if (a.type !== "table" && a.extracted.length > 6000)
         throw new Error(
           file.name +
             ": содержимое превышает 6000 символов. Выделите нужные данные.",
@@ -27476,11 +27489,21 @@ async function prepareSources(step, all, signal) {
     state.sources
       .filter((s) => ["verified", "candidate"].includes(s.status))
       .slice(-20)
-      .map((s) => ({ doi: s.doi, title: s.title, year: s.year })),
+      .map((s) => ({
+        number: s.number || referenceMap().find((r) => r.doi === s.doi)?.number,
+        doi: s.doi,
+        title: s.title,
+        year: s.year,
+        evidence: "metadata-only",
+      })),
   );
 }
-function splitLongLists() {
+function splitLongLists(stepId) {
+  const allowed = stepId
+    ? new Set(targetsForStep(stepId, documentPlan()).map((b) => b.id))
+    : null;
   for (const n of Array.from(editor.children)) {
+    if (allowed && !allowed.has(n.dataset.blockId)) continue;
     if (!["OL", "UL"].includes(n.tagName) || blockMD(n).length <= 3600)
       continue;
     const replacement = [];
@@ -27511,6 +27534,11 @@ function structureContext(all) {
       "Полная структура документа; соседний текст — только справочный контекст.",
     stats: statsFor(editor.innerText),
     blocks: all.length,
+    referenceMap: referenceMap().map((r) => ({
+      number: r.number,
+      title: r.text.slice(0, 110),
+      doi: r.doi,
+    })),
     headings: all
       .filter((b) => /^#{1,6} /.test(b.text))
       .map((b) => b.text)
@@ -27697,14 +27725,371 @@ function infoBrief(all) {
     );
   return parts.join("\n\n").slice(0, 6800);
 }
-async function finishLocal(step, text) {
+function sectionRole(title) {
+  const t = sectionTitle(title);
+  if (/^(?:введение|introduction)/i.test(t)) return "intro";
+  if (
+    /обзор|литератур|related work|background/i.test(t) &&
+    !isBibliographyHeading(t)
+  )
+    return "review";
+  if (/метод|материал|method|design/i.test(t)) return "methods";
+  if (/результат|обсуждени|эксперимент|results|discussion/i.test(t))
+    return "results";
+  if (/заключени|выводы|conclusion/i.test(t)) return "conclusion";
+  if (isBibliographyHeading(t)) return "references";
+  if (/приложени|appendi/i.test(t)) return "appendix";
+  return "body";
+}
+function documentPlan() {
+  const all = blocks();
+  const hasSections = all.some(
+    (b) => /^H[1-6]$/.test(b.node.tagName) && sectionRole(b.text) !== "body",
+  );
+  let role = hasSections ? "front" : "body",
+    section = role,
+    level = 1;
+  return all.map((b) => {
+    const n = b.node,
+      heading = /^H[1-6]$/.test(n.tagName);
+    if (heading) {
+      const next = sectionRole(b.text),
+        l = +n.tagName[1];
+      if (
+        (next !== "body" || l <= level) &&
+        !(
+          role === "front" &&
+          next === "body" &&
+          !/^#*\s*(?:глава|chapter|\d+[.)])/i.test(b.text)
+        )
+      ) {
+        role = next;
+        section = b.id;
+        level = l;
+      }
+    }
+    const locked =
+      heading ||
+      n.tagName === "TABLE" ||
+      n.querySelector("img,table") ||
+      n.dataset.materialId ||
+      /^(?:таблица|рисунок)\s*\d+/i.test(n.textContent.trim());
+    return { ...b, role, section, locked: Boolean(locked) };
+  });
+}
+function referenceMap() {
+  const records = [];
+  let next = 1;
+  for (const b of bibliographyBlocks(blocks()).slice(1)) {
+    const n = b.node;
+    const values = ["OL", "UL"].includes(n.tagName)
+      ? Array.from(n.children).map((li, i) => ({
+          number: n.tagName === "OL" ? (+n.start || 1) + i : next + i,
+          text: li.textContent,
+        }))
+      : [{ number: next, text: n.textContent }];
+    for (const value of values) {
+      records.push({ ...value, doi: extractDOIs(value.text)[0] || null });
+      next = Math.max(next, value.number + 1);
+    }
+  }
+  return records;
+}
+function targetsForStep(step, all) {
+  let available = all.filter(
+    (b) => !b.locked && !["front", "references", "appendix"].includes(b.role),
+  );
+  if (step === 7) available = available.filter((b) => b.role === "review");
+  if (step === 8) available = available.filter((b) => b.role === "intro");
+  if (step === 2) {
+    const text = $("requirements").value,
+      roles = [];
+    for (const [role, rx] of [
+      ["intro", /введени|новизн/i],
+      ["review", /обзор|литератур/i],
+      ["methods", /метод|выборк/i],
+      ["results", /результат|обсуждени/i],
+      ["conclusion", /заключени|вывод/i],
+    ])
+      if (rx.test(text)) roles.push(role);
+    if (roles.length)
+      available = available.filter(
+        (b) => roles.includes(b.role) || b.role === "body",
+      );
+  }
+  return available;
+}
+function formatProfileFromRequirements(text) {
+  const profile = {
+    left: 30,
+    right: 15,
+    top: 20,
+    bottom: 20,
+    font: "Times New Roman",
+    fontPt: 14,
+    line: 1.5,
+    afterPt: 6,
+    indentMm: 12.5,
+    source: text ? "Загруженные требования" : "Базовый профиль",
+  };
+  for (const [field, word] of [
+    ["left", "лев"],
+    ["right", "прав"],
+    ["top", "верх"],
+    ["bottom", "ниж"],
+  ]) {
+    const m = text.match(
+      new RegExp(word + "[а-я]*[^\\n\\d]{0,40}(\\d+(?:[.,]\\d+)?)\\s*мм", "i"),
+    );
+    if (m && +m[1].replace(",", ".") >= 5 && +m[1].replace(",", ".") <= 50)
+      profile[field] = +m[1].replace(",", ".");
+  }
+  const after = text.match(/между абзацами[^\d]{0,20}(\d+)\s*пт/i);
+  if (after) profile.afterPt = +after[1];
+  return profile;
+}
+function tableFromRows(rows) {
+  const table = document.createElement("table"),
+    head = document.createElement("thead"),
+    body = document.createElement("tbody");
+  rows.forEach((row, i) => {
+    const tr = document.createElement("tr");
+    for (const cell of row) {
+      const td = document.createElement(i ? "td" : "th");
+      td.textContent = String(cell ?? "");
+      if (!i) td.textContent = td.textContent.replace(/_/g, " ");
+      tr.append(td);
+    }
+    (i ? body : head).append(tr);
+  });
+  table.append(head, body);
+  return table;
+}
+async function insertMaterialsOnce() {
+  let changed = 0;
+  for (const a of state.materials) {
+    if (a.type === "image") continue;
+    if (
+      Array.from(editor.querySelectorAll("[data-material-id]")).some(
+        (n) => n.dataset.materialId === a.id,
+      )
+    )
+      continue;
+    const title = document.createElement("h2");
+    title.textContent =
+      "Приложение " +
+      String.fromCharCode(
+        1040 + editor.querySelectorAll('[data-material-role="heading"]').length,
+      ) +
+      " — " +
+      a.name;
+    title.dataset.materialId = a.id;
+    title.dataset.materialRole = "heading";
+    editor.append(title);
+    let sheets = a.sheets;
+    if (a.type === "table" && !sheets?.length) {
+      const restored = await assetGet(a.id).catch(() => null);
+      sheets = restored?.sheets;
+      if (!sheets?.length && a.extracted) {
+        const box = document.createElement("div");
+        box.innerHTML = markdownHTML(a.extracted);
+        for (const node of Array.from(box.children)) {
+          node.dataset.materialId = a.id;
+          editor.append(node);
+          changed++;
+        }
+        continue;
+      }
+    }
+    if (sheets?.length)
+      for (const sheet of sheets) {
+        const caption = document.createElement("p");
+        caption.textContent =
+          "Таблица " +
+          (editor.querySelectorAll("table").length + 1) +
+          " — " +
+          a.name +
+          (sheets.length > 1 ? " / " + sheet.name : "");
+        caption.dataset.materialId = a.id;
+        const table = tableFromRows(sheet.rows);
+        table.dataset.materialId = a.id;
+        table.dataset.materialRole = "table";
+        editor.append(caption, table);
+        changed++;
+      }
+    else {
+      const pre = document.createElement("pre");
+      pre.textContent = a.extracted || "";
+      pre.dataset.materialId = a.id;
+      editor.append(pre);
+      changed++;
+    }
+  }
+  const images = ensureMaterialImages({ scope: $("scope").value });
+  changed += images.length;
+  assignBlocks();
+  return changed;
+}
+async function runLocalStep(step) {
+  if (running) return;
+  running = true;
+  controller = new AbortController();
+  controls();
+  snapshot("До локального шага " + step.id);
+  state.steps[step.id] = { status: "running" };
+  $("operation").hidden = false;
+  $("operationText").textContent = "Обрабатываем: " + step.label;
+  try {
+    let comment = "",
+      changed = 0,
+      needsReview = false,
+      skipped = false;
+    if (step.id === 3) {
+      changed = await insertMaterialsOnce();
+      comment = changed
+        ? "Материалы вставлены однократно из исходных файлов. Значения таблиц сохранены без генеративного переписывания; крупные таблицы размещены в приложениях."
+        : "Материалы уже присутствуют; повторные копии не добавлены.";
+      if (!state.materials.length) {
+        comment = "Материалы не загружены. Текст сохранён.";
+        needsReview = true;
+      }
+    }
+    if (step.id === 4) {
+      if (!bibliographyBlocks(blocks()).length) {
+        comment =
+          "Список источников не найден; проверка пропущена, текст сохранён.";
+        skipped = true;
+      } else {
+        await prepareSources(4, blocks(), controller.signal);
+        const items = state.sources,
+          ok = items.filter((s) => s.status === "verified").length;
+        comment =
+          "Проверены метаданные DOI: " +
+          ok +
+          " подтверждено из " +
+          items.length +
+          ". Записи и нумерация сохранены; подробности — в разделе «Источники». Недоступность базы не приводит к удалению записи.";
+        needsReview = items.some((s) => s.status !== "verified");
+      }
+    }
+    if (step.id === 6) {
+      const topic = $("topic").value.trim();
+      if (!topic) {
+        comment =
+          "Укажите тему в профиле для поиска источников. Текст сохранён.";
+        needsReview = true;
+      } else {
+        const r = await apiRequest(
+          {
+            action: "search",
+            query: topic,
+            exclude: extractDOIs(documentMD()),
+          },
+          controller.signal,
+        );
+        const known = new Set(extractDOIs(documentMD()));
+        let number = Math.max(0, ...referenceMap().map((r) => r.number)) + 1;
+        let bib = bibliographyBlocks(blocks());
+        if (!bib.length && r.items?.length) {
+          const h = document.createElement("h2");
+          h.textContent = "Список источников";
+          editor.append(h);
+          bib = blocks().slice(-1);
+        }
+        let anchor = bib.at(-1)?.node;
+        for (const source of r.items || []) {
+          if (known.has(source.doi) || source.relevance?.accepted === false)
+            continue;
+          const p = document.createElement("p");
+          p.textContent =
+            number++ +
+            ". " +
+            (source.authors || []).join(", ") +
+            ". " +
+            source.title +
+            " // " +
+            (source.journal || "") +
+            ". " +
+            (source.year || "б. г.") +
+            ". DOI: " +
+            source.doi +
+            ".";
+          anchor.after(p);
+          anchor = p;
+          known.add(source.doi);
+          state.sources.push({
+            ...source,
+            status: "candidate",
+            number: number - 1,
+            evidence: "metadata-only",
+          });
+          changed++;
+        }
+        comment = changed
+          ? "Добавлено " +
+            changed +
+            " тематических записей из метаданных базы. Номера существующих источников сохранены. Содержание публикаций не выводится из их названий."
+          : "Новых достаточно подходящих записей не найдено. Библиография сохранена; нерелевантные кандидаты не добавлены.";
+        needsReview = !changed;
+      }
+    }
+    if (step.id === 10) {
+      const text =
+        $("requirements").value || state.requirements[10]?.text || "";
+      state.formatProfile = formatProfileFromRequirements(text);
+      for (const n of editor.children) {
+        if (/^H[1-6]$/.test(n.tagName)) {
+          const t = n.textContent.replace(/^(\d+(?:\.\d+)*)\.\s+/, "$1 ");
+          if (t !== n.textContent) {
+            n.textContent = t;
+            changed++;
+          }
+        }
+      }
+      comment =
+        "Профиль экспорта обновлён: поля " +
+        state.formatProfile.left +
+        "/" +
+        state.formatProfile.right +
+        "/" +
+        state.formatProfile.top +
+        "/" +
+        state.formatProfile.bottom +
+        " мм, Times New Roman 14 пт. Научное содержание не переписывалось; наличие титула, оглавления и полноту требований проверьте по отчёту.";
+      needsReview = true;
+    }
+    if (step.id === 11) {
+      comment =
+        "Паспорт авторства обновлён по фактическому журналу версий и изменений. Текст работы не переписывался; служебные отметки AI остаются в паспорте, а не в научных абзацах.";
+    }
+    await finishLocal(step, comment, { changed, needsReview, skipped });
+  } catch (e) {
+    if (e.name === "AbortError") toast("Операция остановлена, текст сохранён");
+    else showFeedback(step, e.message, true);
+    state.steps[step.id] = { status: "error" };
+  } finally {
+    running = false;
+    controller = null;
+    $("operation").hidden = true;
+    controls();
+    persist();
+  }
+}
+async function finishLocal(step, text, options = {}) {
   state.results[step.id] = {
-    text,
-    comment: "",
+    text: step.edit ? "" : text,
+    comment: step.edit ? text : "",
+    needsReview: Boolean(options.needsReview),
+    changed: options.changed || 0,
     local: true,
     date: new Date().toISOString(),
   };
-  state.steps[step.id] = { status: "done", date: new Date().toISOString() };
+  state.steps[step.id] = {
+    status: options.skipped ? "skipped" : "done",
+    needsReview: Boolean(options.needsReview),
+    date: new Date().toISOString(),
+  };
+  if (step.edit) snapshot("После локального шага " + step.id);
   await logEvent("local-analysis", {
     step: step.id,
     model: "local",
@@ -27724,6 +28109,10 @@ async function applyStep() {
     return;
   }
   if (!isUnlocked(step.id, state.steps)) return;
+  if ([3, 4, 6, 10, 11].includes(step.id)) {
+    await runLocalStep(step);
+    return;
+  }
   if (step.id === 1) {
     await finishLocal(step, localDiagnosis(blocks()));
     return;
@@ -27758,9 +28147,9 @@ async function applyStep() {
     return;
   }
   snapshot("Перед подготовкой фрагментов");
-  splitLongLists();
-  let all = blocks(),
-    target = all;
+  splitLongLists(step.id);
+  let all = documentPlan(),
+    target = step.edit ? targetsForStep(step.id, all) : all;
   const scope = $("scope").value;
   if (step.id === 4 && !bibliographyBlocks(all).length) {
     snapshot("Перед пропуском анализа источников");
@@ -27782,7 +28171,12 @@ async function applyStep() {
       toast("Сначала выделите абзацы в редакторе.", "error");
       return;
     }
-    target = all.filter((b) => selectedIDs.includes(b.id));
+    target = all.filter(
+      (b) =>
+        selectedIDs.includes(b.id) &&
+        (!step.edit ||
+          (!b.locked && !["front", "references", "appendix"].includes(b.role))),
+    );
   } else if ([4, 6].includes(step.id)) {
     const bib = bibliographyBlocks(all);
     if (!bib.length) {
@@ -27795,21 +28189,34 @@ async function applyStep() {
   }
   let chunks;
   try {
-    chunks = groupBlocks(target).map((group) => {
-      const start = all.indexOf(group[0]),
-        end = all.indexOf(group.at(-1));
-      return {
-        ids: group.map((b) => b.id),
-        blocks: group.map((b) => ({ id: b.id, text: b.text })),
-        text: group.map((b) => b.text).join("\n\n"),
-        context: all
-          .slice(Math.max(0, start - 1), start)
-          .concat(all.slice(end + 1, end + 2))
-          .map((b) => b.text)
-          .join("\n\n")
-          .slice(0, 4000),
-      };
-    });
+    const sections = [];
+    for (const block of target) {
+      const last = sections.at(-1);
+      if (last?.section === block.section) last.items.push(block);
+      else sections.push({ section: block.section, items: [block] });
+    }
+    chunks = sections
+      .flatMap((section) => groupBlocks(section.items))
+      .map((group) => {
+        const start = all.indexOf(group[0]),
+          end = all.indexOf(group.at(-1));
+        return {
+          ids: group.map((b) => b.id),
+          blocks: group.map((b) => ({ id: b.id, text: b.text })),
+          text: group.map((b) => b.text).join("\n\n"),
+          section: group[0].role,
+          context:
+            "Текущий раздел: " +
+            group[0].role +
+            ". " +
+            all
+              .slice(Math.max(0, start - 1), start)
+              .concat(all.slice(end + 1, end + 2))
+              .map((b) => b.text)
+              .join("\n\n")
+              .slice(0, 4000),
+        };
+      });
     if ([12, 13].includes(step.id) && scope === "auto")
       chunks = [
         {
@@ -27819,7 +28226,14 @@ async function applyStep() {
             "Нужно подготовить единый практический результат по переданным выдержкам. Отметь ограничения данных.",
         },
       ];
-    if (!chunks.length) throw new Error("Нет подходящих фрагментов.");
+    if (!chunks.length) {
+      await finishLocal(
+        step,
+        "Для этого этапа не найден подходящий раздел. Выберите нужные абзацы вручную; текст сохранён.",
+        { needsReview: true },
+      );
+      return;
+    }
     if (step.id === 3) materialsContext();
   } catch (e) {
     toast(e.message, "error");
@@ -27955,6 +28369,234 @@ function excludeUnverifiedDOIs(original, proposed, allowed) {
     .trim();
   return { text: hasInvalid(cleaned) ? original : cleaned, excluded: unknown };
 }
+function numericTokens(text) {
+  return [
+    ...new Set(
+      String(text)
+        .replace(/\[[^\]]*\]/g, "")
+        .replace(/10\.\d{4,9}\/\S+/g, "")
+        .match(/\d+(?:[.,]\d+)?%?/g) || [],
+    ),
+  ];
+}
+function operationProblem(before, after, node, step, insertion = false) {
+  if (
+    node?.dataset.materialId ||
+    node?.tagName === "TABLE" ||
+    node?.querySelector("img,table")
+  )
+    return "Существующий материал сохранён без переписывания";
+  if (node && /^H[1-6]$/.test(node.tagName))
+    return "Заголовок защищён от генеративного переписывания";
+  if (/^#{1,6}\s/m.test(after))
+    return "Заголовки разделов не вставляются моделью повторно";
+  if (
+    /(?:уточнено|исправлено|удалены упоминания|добавлены пояснения|для улучшения связности текст|текст был структурирован|(?:AI|ИИ|АТ|АГ) использовался для)/i.test(
+      after,
+    ) &&
+    !/(?:уточнено|исправлено|добавлены пояснения|использовался для анализа)/i.test(
+      before,
+    )
+  )
+    return "Служебное пояснение оставлено в комментарии";
+  const oldNumbers = numericTokens(before),
+    nextNumbers = numericTokens(after);
+  if (
+    oldNumbers.some((n) => !nextNumbers.includes(n)) ||
+    nextNumbers.some((n) => !oldNumbers.includes(n))
+  )
+    return "Исходные числовые значения сохранены; изменение требует отдельного подтверждения автора";
+  const oldRefs = citationNumbersForText(before),
+    newRefs = citationNumbersForText(after);
+  if (oldRefs.some((n) => !newRefs.includes(n)))
+    return "Номера существующих ссылок сохранены";
+  const knownRefs = new Set(referenceMap().map((r) => r.number));
+  if (newRefs.some((n) => !knownRefs.has(n) && !oldRefs.includes(n)))
+    return "Ссылка на отсутствующую запись пропущена";
+  if (after.length > Math.max(1100, before.length * 1.8 + 250))
+    return "Избыточное расширение фрагмента пропущено";
+  return "";
+}
+function citationNumbersForText(text) {
+  const result = new Set();
+  for (const match of String(text)
+    .replace(/\\([\[\]])/g, "$1")
+    .matchAll(/\[([\d\s,;–—-]+)\]/g))
+    for (const item of match[1].split(/[,;]/)) {
+      const range = item.trim().match(/^(\d+)\s*[–—-]\s*(\d+)$/);
+      if (range && +range[2] - +range[1] < 100)
+        for (let n = +range[1]; n <= +range[2]; n++) result.add(n);
+      else if (/^\d+$/.test(item.trim())) result.add(+item.trim());
+    }
+  return [...result];
+}
+function duplicateOfDocument(text, except) {
+  const signature = (t) =>
+    normalizeText(t)
+      .replace(/[\p{P}\p{S}]/gu, "")
+      .toLowerCase();
+  const candidate = signature(text);
+  if (candidate.length < 70) return false;
+  const grams = (t) => {
+    const words = t.split(/\s+/),
+      result = new Set();
+    for (let i = 0; i < words.length - 2; i++)
+      result.add(words.slice(i, i + 3).join(" "));
+    return result;
+  };
+  const candidateGrams = grams(candidate);
+  return Array.from(editor.children).some((n) => {
+    if (n === except || n.dataset.materialId) return false;
+    const existing = signature(blockMD(n));
+    if (existing === candidate) return true;
+    if (existing.length >= 100 && candidate.includes(existing)) return true;
+    if (
+      Math.min(candidate.length, existing.length) /
+        Math.max(candidate.length, existing.length) <
+      0.7
+    )
+      return false;
+    const oldGrams = grams(existing);
+    if (Math.min(candidateGrams.size, oldGrams.size) < 8) return false;
+    const shared = [...candidateGrams].filter((g) => oldGrams.has(g)).length;
+    return shared / Math.max(candidateGrams.size, oldGrams.size) > 0.86;
+  });
+}
+function applyScopedPatches(chunk, result) {
+  const step = state.job?.step || state.selected,
+    plan = documentPlan();
+  const allowed = new Set(chunk.ids),
+    nodes = new Map(
+      plan.filter((b) => allowed.has(b.id)).map((b) => [b.id, b]),
+    );
+  let changed = 0;
+  const before = [],
+    after = [],
+    ids = [],
+    tails = new Map();
+  const warn = (message) => noteFilteredResult(result, message + ".");
+  const prepare = (text, old, node, insertion) => {
+    const cleaned = excludeUnverifiedDOIs(
+      old,
+      String(text),
+      new Set(extractDOIs(old)),
+    );
+    if (cleaned.excluded.length)
+      warn(
+        "Добавленные DOI вне библиографии исключены; ссылки в тексте задаются номерами источников",
+      );
+    if (!cleaned.text.trim()) return null;
+    const problem = operationProblem(old, cleaned.text, node, step, insertion);
+    if (problem) {
+      warn(problem);
+      return null;
+    }
+    if (duplicateOfDocument(cleaned.text, node)) {
+      warn("Повтор уже существующего абзаца не вставлен");
+      return null;
+    }
+    const box = document.createElement("div");
+    box.innerHTML = markdownHTML(cleaned.text);
+    if (
+      box.querySelector("h1,h2,h3,h4,h5,h6,img") ||
+      (box.querySelector("table") &&
+        !(
+          insertion &&
+          step === 2 &&
+          nodes.get(chunk.ids[0])?.role === "review" &&
+          /таблиц/i.test(state.job?.requirements || "")
+        ))
+    ) {
+      warn("Структура или повторная таблица из ответа не применены");
+      return null;
+    }
+    if (!box.children.length) return null;
+    return Array.from(box.children);
+  };
+  for (const change of result.patches.changes || []) {
+    const block = nodes.get(change.id);
+    if (
+      !block ||
+      block.locked ||
+      ["front", "references", "appendix"].includes(block.role)
+    ) {
+      warn("Правка вне разрешённой области пропущена");
+      continue;
+    }
+    if (normalizeText(change.text) === normalizeText(block.text)) continue;
+    const fresh = prepare(change.text, block.text, block.node, false);
+    if (!fresh) continue;
+    before.push(block.node.innerText);
+    fresh.forEach((n, i) => {
+      n.dataset.blockId = i ? uid() : block.id;
+      n.classList.add("changed");
+      ids.push(n.dataset.blockId);
+    });
+    block.node.replaceWith(...fresh);
+    block.node = fresh.at(-1);
+    after.push(fresh.map((n) => n.innerText).join("\n"));
+    changed++;
+  }
+  for (const insertion of result.patches.insertions || []) {
+    const id = insertion.afterId || insertion.beforeId,
+      block = nodes.get(id);
+    if (!block || ["front", "references", "appendix"].includes(block.role)) {
+      warn("Вставка вне разрешённого раздела пропущена");
+      continue;
+    }
+    const fresh = prepare(insertion.text, "", null, true);
+    if (!fresh) continue;
+    if (
+      (state.job?.insertedChars || 0) + insertion.text.length >
+      Math.max(1800, (state.job?.beforeHTML?.length || 0) * 0.25)
+    ) {
+      warn("Лимит расширения этапа достигнут; лишняя вставка пропущена");
+      continue;
+    }
+    fresh.forEach((n) => {
+      n.dataset.blockId = uid();
+      n.classList.add("changed");
+      ids.push(n.dataset.blockId);
+    });
+    const anchor =
+      tails.get(id) ||
+      Array.from(editor.children).find((n) => n.dataset.blockId === id) ||
+      block.node;
+    if (insertion.beforeId) anchor.before(...fresh);
+    else {
+      anchor.after(...fresh);
+      tails.set(id, fresh.at(-1));
+    }
+    if (state.job)
+      state.job.insertedChars =
+        (state.job.insertedChars || 0) + insertion.text.length;
+    after.push(fresh.map((n) => n.innerText).join("\n"));
+    changed++;
+  }
+  for (const id of result.patches.deletions || []) {
+    const block = nodes.get(id);
+    if (block && !block.locked && duplicateOfDocument(block.text, block.node)) {
+      before.push(block.node.innerText);
+      block.node.remove();
+      changed++;
+    } else warn("Удаление уникального исходного блока не применено");
+  }
+  lastDiff = { before: before.join("\n\n"), after: after.join("\n\n") };
+  setTimeout(
+    () =>
+      editor
+        .querySelectorAll(".changed")
+        .forEach((n) => n.classList.remove("changed")),
+    4500,
+  );
+  updateStats();
+  return {
+    changed,
+    beforeText: lastDiff.before,
+    afterText: lastDiff.after,
+    blockIDs: ids,
+  };
+}
 function applyChunk(chunk, result) {
   const nodes = chunk.ids.map((id) =>
     Array.from(editor.children).find((n) => n.dataset.blockId === id),
@@ -27968,6 +28610,17 @@ function applyChunk(chunk, result) {
     throw new Error(
       "Текст изменён после начала операции. Создайте новый запуск.",
     );
+  if (result.patches) return applyScopedPatches(chunk, result);
+  const legacyProblem = operationProblem(
+    oldMD,
+    String(result.text || ""),
+    null,
+    state.job?.step || state.selected,
+  );
+  if (legacyProblem) {
+    noteFilteredResult(result, legacyProblem + ". Исходный фрагмент сохранён.");
+    return { changed: 0 };
+  }
   const knownDOIs = new Set([
     ...extractDOIs(documentMD()),
     ...state.sources
@@ -28157,6 +28810,12 @@ function tokenCount(usage) {
 async function runJob() {
   const job = state.job;
   if (!job || running) return;
+  if ([3, 4, 6, 10, 11].includes(job.step)) {
+    state.selected = job.step;
+    state.job = null;
+    await applyStep();
+    return;
+  }
   running = true;
   controller = new AbortController();
   state.steps[job.step] = { status: "running" };
@@ -28171,7 +28830,7 @@ async function runJob() {
     persist();
     while (job.index < job.chunks.length) {
       const c = job.chunks[job.index];
-      let context = c.context + "\n" + (job.structure || "");
+      let context = (job.structure || "") + "\n" + c.context;
       if (job.step === 10)
         context +=
           "\nАудит исходного DOCX: " +
@@ -28249,7 +28908,7 @@ async function runJob() {
             step: job.step,
             model: job.model,
             text: c.text,
-            context: context.slice(0, 3500),
+            context: context.slice(0, 6500),
             requirements: job.requirements,
             materials: job.materials,
             sources,
@@ -28652,6 +29311,7 @@ function showHistory() {
         state.steps = structuredClone(v.steps || {});
         state.results = structuredClone(v.results || {});
         state.sources = structuredClone(v.sources || []);
+        state.formatProfile = structuredClone(v.formatProfile || null);
         state.job = null;
         selectedIDs = [];
         await logEvent("restore", { versionId: v.id });
@@ -29138,6 +29798,8 @@ function docxInline(node, options = {}) {
 async function docxBlob() {
   if (!window.docx) throw new Error("Не загрузилась библиотека экспорта DOCX.");
   const d = window.docx,
+    profile = state.formatProfile || formatProfileFromRequirements(""),
+    mm = (value) => Math.round((value * 1440) / 25.4),
     children = [];
   let listIndex = 0;
   const configs = [];
@@ -29146,10 +29808,18 @@ async function docxBlob() {
       const rows = Array.from(n.rows).map(
         (r) =>
           new d.TableRow({
+            tableHeader: r.rowIndex === 0,
+            cantSplit: true,
             children: Array.from(r.cells).map(
               (c) =>
                 new d.TableCell({
-                  children: [new d.Paragraph({ children: docxInline(c) })],
+                  children: [
+                    new d.Paragraph({
+                      children: docxInline(c, { size: 24 }),
+                      spacing: { line: 300, after: 40 },
+                      indent: { firstLine: 0 },
+                    }),
+                  ],
                   columnSpan: Number(c.colSpan) || 1,
                   rowSpan: Number(c.rowSpan) || 1,
                 }),
@@ -29160,6 +29830,15 @@ async function docxBlob() {
         new d.Table({
           rows,
           width: { size: 100, type: d.WidthType.PERCENTAGE },
+          layout: d.TableLayoutType.FIXED,
+          columnWidths: Array.from(
+            { length: Math.max(...Array.from(n.rows, (r) => r.cells.length)) },
+            () =>
+              Math.floor(
+                mm(210 - profile.left - profile.right) /
+                  Math.max(...Array.from(n.rows, (r) => r.cells.length)),
+              ),
+          ),
         }),
       );
     } else if (["UL", "OL"].includes(n.tagName)) {
@@ -29196,13 +29875,25 @@ async function docxBlob() {
           alignment:
             d.AlignmentType[n.style.textAlign?.toUpperCase()] ||
             d.AlignmentType.JUSTIFIED,
-          spacing: { line: 360, after: 120 },
+          spacing: { line: 360, after: profile.afterPt * 20 },
+          indent: { firstLine: heading ? 0 : mm(profile.indentMm) },
         }),
       );
     }
   }
   const doc = new d.Document({
     styles: {
+      paragraphStyles: Array.from({ length: 6 }, (_, i) => ({
+        id: "Heading" + (i + 1),
+        name: "Heading " + (i + 1),
+        basedOn: "Normal",
+        next: "Normal",
+        run: { font: profile.font, size: 28, bold: true, color: "000000" },
+        paragraph: {
+          spacing: { before: 200, after: 200 },
+          indent: { firstLine: 0 },
+        },
+      })),
       default: {
         document: {
           run: { font: "Times New Roman", size: 28 },
@@ -29216,7 +29907,12 @@ async function docxBlob() {
         properties: {
           page: {
             size: { width: 11906, height: 16838 },
-            margin: { top: 1134, bottom: 1134, left: 1701, right: 850 },
+            margin: {
+              top: mm(profile.top),
+              bottom: mm(profile.bottom),
+              left: mm(profile.left),
+              right: mm(profile.right),
+            },
           },
         },
         children: children.length ? children : [new d.Paragraph("")],
@@ -29229,20 +29925,54 @@ async function exportDocx() {
   download(await docxBlob(), "vkr-kontur.docx");
   toast("DOCX экспортирован", "success");
 }
+function installPrintStyles() {
+  if ($("vkrPrintStyles")) return;
+  const style = document.createElement("style");
+  style.id = "vkrPrintStyles";
+  style.textContent = `.vkr-print-page{box-sizing:border-box!important}.vkr-print-page *{max-width:100%;box-sizing:border-box}.vkr-print-page table{table-layout:fixed!important;border-collapse:collapse!important;width:100%!important;font:12pt/1.25 'Times New Roman',serif!important;margin:8pt 0!important}.vkr-print-page td,.vkr-print-page th{font:12pt/1.25 'Times New Roman',serif!important;overflow-wrap:anywhere!important;word-break:break-word!important;white-space:normal!important;text-indent:0!important;padding:3pt!important;border:0.5pt solid #777!important}.vkr-print-page h1,.vkr-print-page h2,.vkr-print-page h3,.vkr-print-page h4{font-family:'Times New Roman',serif!important;font-size:14pt!important;line-height:1.4!important;color:#000!important;overflow-wrap:anywhere}.vkr-print-page p{overflow-wrap:anywhere}.vkr-print-page img{max-width:100%;height:auto}.vkr-print-page pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11pt}`;
+  document.head.append(style);
+}
 function pdfPage() {
+  installPrintStyles();
+  const profile = state.formatProfile || formatProfileFromRequirements("");
   const page = document.createElement("div");
-  page.className = "editor";
+  page.className = "editor vkr-print-page";
   page.style.cssText =
-    "font-family:Times New Roman,serif;font-size:14pt;line-height:1.5;padding:0;background:white;color:black;max-height:none;min-height:0;overflow:visible;width:165mm;";
+    "font-family:Times New Roman,serif;font-size:14pt;line-height:1.5;padding:0;background:white;color:black;max-height:none;min-height:0;overflow:visible;width:" +
+    (210 - profile.left - profile.right) +
+    "mm;";
   return page;
+}
+function preparePrintTable(table) {
+  // Explicit soft breaks are also understood by html2canvas's line layout.
+  // Apply only to the export clone; original cell values stay byte-for-byte intact.
+  for (const cell of table.querySelectorAll("th,td")) {
+    const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+    const texts = [];
+    while (walker.nextNode()) texts.push(walker.currentNode);
+    for (const text of texts)
+      text.nodeValue = text.nodeValue.replace(/[^\s\u200b]{9,}/gu, (word) =>
+        Array.from(word)
+          .map((c, i) => (i && i % 7 === 0 ? "\u200b" + c : c))
+          .join(""),
+      );
+  }
+  return table;
 }
 function exportFragments(n) {
   if (["OL", "UL"].includes(n.tagName))
     return Array.from(n.children).map((li, i) => {
-      const list = n.cloneNode(false);
-      if (n.tagName === "OL") list.start = (Number(n.start) || 1) + i;
-      list.append(li.cloneNode(true));
-      return list;
+      // Canvas renderers can reset OL start values; emit a literal export-only marker.
+      const item = document.createElement("div");
+      item.className = "vkr-print-list-item";
+      item.style.cssText = "margin:6px 0;padding-left:6mm;text-indent:-6mm";
+      item.innerHTML = li.innerHTML;
+      const number =
+        Number(li.getAttribute("value")) || (Number(n.start) || 1) + i;
+      item.prepend(
+        document.createTextNode(n.tagName === "OL" ? number + ". " : "• "),
+      );
+      return item;
     });
   return [n.cloneNode(true)];
 }
@@ -29250,10 +29980,14 @@ async function exportPDF() {
   let host;
   try {
     if (!window.html2pdf) throw new Error("Не загрузилась библиотека PDF.");
+    const profile = state.formatProfile || formatProfileFromRequirements(""),
+      width = 210 - profile.left - profile.right,
+      height = 297 - profile.top - profile.bottom;
     host = document.createElement("div");
-    host.style.cssText = "position:absolute;left:-10000px;top:0;width:165mm;";
+    host.style.cssText =
+      "position:absolute;left:-10000px;top:0;width:" + width + "mm;";
     document.body.append(host);
-    const maxHeight = (257 * 96) / 25.4,
+    const maxHeight = (height * 96) / 25.4,
       pages = [];
     let current = pdfPage();
     host.append(current);
@@ -29264,6 +29998,7 @@ async function exportPDF() {
       pages.push(current);
     };
     const appendTable = async (tableNode) => {
+      preparePrintTable(tableNode);
       if (
         Array.from(tableNode.querySelectorAll("[rowspan]")).some(
           (n) => Number(n.getAttribute("rowspan")) > 1,
@@ -29344,7 +30079,7 @@ async function exportPDF() {
       toast("Экспорт PDF: страница " + (i + 1) + " / " + pages.length);
       const worker = html2pdf()
         .set({
-          margin: [20, 15, 20, 30],
+          margin: [profile.top, profile.right, profile.bottom, profile.left],
           image: { type: "jpeg", quality: 0.94 },
           html2canvas: { scale: 1.5, backgroundColor: "#ffffff" },
           jsPDF: { unit: "mm", format: "a4" },
@@ -29360,14 +30095,23 @@ async function exportPDF() {
         pdf.addImage(
           canvas.toDataURL("image/jpeg", 0.94),
           "JPEG",
-          30,
-          20,
-          165,
-          Math.min(257, (canvas.height / canvas.width) * 165),
+          profile.left,
+          profile.top,
+          width,
+          Math.min(height, (canvas.height / canvas.width) * width),
         );
         canvas.width = 1;
         canvas.height = 1;
       }
+    }
+    for (let page = 2; page <= pdf.getNumberOfPages(); page++) {
+      pdf.setPage(page);
+      pdf.setFont("times", "normal");
+      pdf.setFontSize(14);
+      pdf.setTextColor(0);
+      pdf.text(String(page), 105, Math.max(8, profile.top - 6), {
+        align: "center",
+      });
     }
     pdf.save("vkr-kontur.pdf");
   } catch (e) {
