@@ -2,7 +2,7 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="application-version" content="2.3.0" />
+    <meta name="application-version" content="2.4.0" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="theme-color" content="#4f46e5" />
     <title>ВКР-Контур — от черновика до защиты</title>
@@ -1472,7 +1472,7 @@
                   North Mini
                 </option>
               </optgroup>
-            </select>
+            </select><div class="small" id="modelStatus" role="status" style="margin:8px 0"></div><button type="button" class="btn" id="probeModel" style="font-size:11px">Проверить модель</button>
             <div class="action-box">
               <strong id="selectedName">1. Загрузка и профиль</strong>
               <p id="selectedMode">Анализ · результат под редактором</p>
@@ -26067,6 +26067,9 @@ function emptyState() {
     events: [],
     results: {},
     sources: [],
+    removedSources: [],
+    affectedSourcePassages: [],
+    sourceReview: null,
     docxAudit: null,
     job: null,
     model: "yandexgpt-5-lite",
@@ -26522,6 +26525,9 @@ function snapshot(label) {
     results: structuredClone(state.results),
     sources: structuredClone(state.sources),
     formatProfile: structuredClone(state.formatProfile || null),
+    removedSources: structuredClone(state.removedSources || []),
+    affectedSourcePassages: structuredClone(state.affectedSourcePassages || []),
+    sourceReview: structuredClone(state.sourceReview || null),
   });
   state.history = state.history.slice(-8);
 }
@@ -26679,11 +26685,12 @@ function selectStep(id) {
   state.selected = id;
   const s = STEPS[id - 1];
   $("selectedName").textContent = id + ". " + s.label;
-  $("selectedMode").textContent = [1, 3, 4, 6, 10, 11, 14].includes(s.id)
-    ? "Локальный анализ · без расхода AI-токенов"
-    : s.edit
-      ? "Правки · применяются автоматически по фрагментам"
-      : "Анализ · результат под редактором";
+  $("selectedMode").textContent =
+    s.id === 1
+      ? "Локальный анализ · без расхода AI-токенов"
+      : s.edit
+        ? "Правки · применяются автоматически по фрагментам"
+        : "Анализ · результат под редактором";
   $("stepFiles").hidden = !s.fileUpload;
   $("requirements").value = state.requirements[id]?.text || "";
   $("stepFileName").textContent = state.requirements[id]?.name || "";
@@ -26743,6 +26750,7 @@ function controls() {
     "stepUploadBtn",
     "requirements",
     "modelSelect",
+    "probeModel",
     "scope",
     "economySummary",
     "consentCheckbox",
@@ -26786,8 +26794,10 @@ async function apiRequest(body, signal) {
   if (hit && hit.at > Date.now() - 300000)
     return { ...hit.value, cached: true };
   const cacheId =
-    "response:" + (await digest("pipeline-2.3\n" + apiEndpoint() + "\n" + key));
-  const cacheTTL = ["run", "synthesize"].includes(body.action)
+    "response:" + (await digest("pipeline-2.4\n" + apiEndpoint() + "\n" + key));
+  const cacheTTL = ["run", "synthesize", "plan", "overview"].includes(
+    body.action,
+  )
     ? 86400000
     : 3600000;
   const persisted = await assetGet(cacheId).catch(() => null);
@@ -26914,6 +26924,36 @@ function delay(ms, signal) {
     else signal?.addEventListener("abort", abort, { once: true });
   });
 }
+function showModelStatus() {
+  const id = $("modelSelect").value,
+    m = healthModels.find((m) => m.id === id),
+    o = $("modelSelect").selectedOptions[0];
+  $("modelStatus").textContent = m
+    ? (!m.configured ? "На сервере не настроен ключ этого провайдера. " : "") +
+      (m.freeReason || "")
+    : "Выберите модель и проверьте коротким запросом. Проверка использует небольшую часть квоты.";
+  if (o && m) o.title = $("modelStatus").textContent;
+}
+async function probeModel() {
+  if (running) return;
+  const button = $("probeModel");
+  button.disabled = true;
+  $("modelStatus").textContent = "Проверяем реальный ответ выбранной модели…";
+  try {
+    const r = await apiRequest({
+      action: "probe",
+      model: $("modelSelect").value,
+      nonce: uid(),
+    });
+    $("modelStatus").textContent = "Модель ответила: " + r.text;
+    toast("Модель доступна", "success");
+  } catch (e) {
+    $("modelStatus").textContent = (e.code ? e.code + ": " : "") + e.message;
+    toast(e.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
 async function health() {
   try {
     const response = await fetch(apiEndpoint(), {
@@ -26923,6 +26963,11 @@ async function health() {
     if (!response.ok || !d.ok || d.transport !== "http-fragments")
       throw new Error("Нужна новая версия backend");
     healthModels = d.models || [];
+    if (d.version && d.version !== "2.4.0")
+      toast(
+        "Обновите Cloud Function до 2.4.0: страница использует новый AI-планировщик.",
+        "info",
+      );
     $("connectionDot").className = "status-dot online";
     $("connectionText").textContent = "API доступен";
     for (const option of $("modelSelect").options) {
@@ -26932,6 +26977,7 @@ async function health() {
       );
       if (m?.freeReason) option.title = m.freeReason;
     }
+    showModelStatus();
     const current = $("modelSelect").selectedOptions[0];
     if (current?.disabled && !running && !state.job) {
       const next =
@@ -27346,6 +27392,10 @@ async function uploadDocx(file) {
     state.steps = {};
     state.results = {};
     state.sources = [];
+    state.removedSources = [];
+    state.affectedSourcePassages = [];
+    state.sourceReview = null;
+    state.formatProfile = null;
     state.materials = [];
     selectedIDs = [];
     state.selected = 1;
@@ -27396,24 +27446,21 @@ function captureSelection() {
     .map((n) => n.dataset.blockId);
 }
 function materialsContext() {
-  const text = state.materials
-    .map((a) =>
-      a.type === "image"
-        ? JSON.stringify({
-            id: a.id,
-            type: "image",
-            name: a.name,
-            caption: a.caption || "Описание не указано",
-            marker: "![" + (a.caption || "Рисунок") + "](asset:" + a.id + ")",
-          })
-        : "Файл: " + a.name + "\n" + a.extracted,
-    )
-    .join("\n\n");
-  if (text.length > 18000)
-    throw new Error(
-      "Материалы содержат более 18000 символов. Уберите лишние файлы.",
-    );
-  return text;
+  return JSON.stringify(
+    state.materials.map((a) => ({
+      id: a.id,
+      type: a.type,
+      name: a.name,
+      caption: a.caption || "",
+      sheets: a.sheets || undefined,
+      text: a.type === "image" ? undefined : a.extracted,
+      alreadyPlaced: Array.from(
+        editor.querySelectorAll("[data-material-id],[data-asset-id]"),
+      ).some(
+        (n) => n.dataset.materialId === a.id || n.dataset.assetId === a.id,
+      ),
+    })),
+  );
 }
 function progress(job, detail) {
   $("operationText").textContent =
@@ -27437,17 +27484,22 @@ function progress(job, detail) {
 }
 async function prepareSources(step, all, signal) {
   if (step === 4) {
-    const bibliography = bibliographyBlocks(all),
-      dois = extractDOIs(bibliography.map((b) => b.text).join("\n")),
+    const dois = extractDOIs(
+        bibliographyBlocks(all)
+          .map((b) => b.text)
+          .join("\n"),
+      ),
       items = [];
     for (let i = 0; i < dois.length; i += 3) {
-      $("operationDetail").textContent =
-        "Проверяем DOI " +
-        (i + 1) +
-        "–" +
-        Math.min(i + 3, dois.length) +
-        " из " +
-        dois.length;
+      progress(
+        state.job,
+        "Проверяем метаданные DOI " +
+          (i + 1) +
+          "–" +
+          Math.min(i + 3, dois.length) +
+          " из " +
+          dois.length,
+      );
       const r = await apiRequest(
         { action: "verify", dois: dois.slice(i, i + 3) },
         signal,
@@ -27456,47 +27508,31 @@ async function prepareSources(step, all, signal) {
     }
     state.sources = items;
     persist();
-    return JSON.stringify({
-      verified: items,
-      withoutDOI: "Записи без DOI требуют ручной проверки, не удалять.",
-      topic: state.profile.topic,
-    });
+    return sourceContext();
   }
   if (step === 6) {
-    const topic = $("topic").value.trim();
-    if (!topic)
-      throw new Error("Для подбора публикаций укажите тему работы в профиле.");
+    const query =
+      $("topic").value.trim() ||
+      sectionTitle(
+        all.find((b) => /^#{1,6} /.test(b.text))?.text || all[0]?.text || "",
+      ).slice(0, 300);
     const r = await apiRequest(
-      {
-        action: "search",
-        query: topic,
-        exclude: extractDOIs(all.map((b) => b.text).join("\n")),
-      },
+      { action: "search", query, exclude: extractDOIs(documentMD()) },
       signal,
     );
-    if (!r.items?.length)
-      throw new Error(
-        "По теме не найдено новых DOI. Уточните тему; источники не выдумываются.",
-      );
-    state.sources = [
-      ...state.sources,
-      ...r.items.map((x) => ({ ...x, status: "candidate" })),
-    ];
-    persist();
-    return JSON.stringify(r);
-  }
-  return JSON.stringify(
-    state.sources
-      .filter((s) => ["verified", "candidate"].includes(s.status))
-      .slice(-20)
-      .map((s) => ({
-        number: s.number || referenceMap().find((r) => r.doi === s.doi)?.number,
-        doi: s.doi,
-        title: s.title,
-        year: s.year,
-        evidence: "metadata-only",
+    return JSON.stringify({
+      candidates: r.items || [],
+      existing: referenceMap().map((r) => ({
+        number: r.number,
+        text: r.text,
+        doi: r.doi,
       })),
-  );
+      note: r.items?.length
+        ? "Модель сама выбирает релевантные записи."
+        : "База не вернула кандидатов; не выдумывать источники.",
+    });
+  }
+  return sourceContext();
 }
 function splitLongLists(stepId) {
   const allowed = stepId
@@ -27784,10 +27820,20 @@ function referenceMap() {
     const n = b.node;
     const values = ["OL", "UL"].includes(n.tagName)
       ? Array.from(n.children).map((li, i) => ({
-          number: n.tagName === "OL" ? (+n.start || 1) + i : next + i,
+          number: (Number(n.start) || next) + i,
           text: li.textContent,
+          id: b.id,
         }))
-      : [{ number: next, text: n.textContent }];
+      : [
+          {
+            number:
+              Number(n.dataset.sourceNumber) ||
+              Number(n.textContent.match(/^\s*(\d+)[.)]\s+/)?.[1]) ||
+              next,
+            text: n.textContent.replace(/^\s*\d+[.)]\s+/, ""),
+            id: b.id,
+          },
+        ];
     for (const value of values) {
       records.push({ ...value, doi: extractDOIs(value.text)[0] || null });
       next = Math.max(next, value.number + 1);
@@ -27796,28 +27842,7 @@ function referenceMap() {
   return records;
 }
 function targetsForStep(step, all) {
-  let available = all.filter(
-    (b) => !b.locked && !["front", "references", "appendix"].includes(b.role),
-  );
-  if (step === 7) available = available.filter((b) => b.role === "review");
-  if (step === 8) available = available.filter((b) => b.role === "intro");
-  if (step === 2) {
-    const text = $("requirements").value,
-      roles = [];
-    for (const [role, rx] of [
-      ["intro", /введени|новизн/i],
-      ["review", /обзор|литератур/i],
-      ["methods", /метод|выборк/i],
-      ["results", /результат|обсуждени/i],
-      ["conclusion", /заключени|вывод/i],
-    ])
-      if (rx.test(text)) roles.push(role);
-    if (roles.length)
-      available = available.filter(
-        (b) => roles.includes(b.role) || b.role === "body",
-      );
-  }
-  return available;
+  return editableBlocks(step, all);
 }
 function formatProfileFromRequirements(text) {
   const profile = {
@@ -27865,216 +27890,663 @@ function tableFromRows(rows) {
   table.append(head, body);
   return table;
 }
-async function insertMaterialsOnce() {
-  let changed = 0;
-  for (const a of state.materials) {
-    if (a.type === "image") continue;
+function editableBlocks(step, all = documentPlan()) {
+  const available = all.filter((b) => {
     if (
-      Array.from(editor.querySelectorAll("[data-material-id]")).some(
-        (n) => n.dataset.materialId === a.id,
+      b.node.tagName === "TABLE" ||
+      b.node.querySelector("img,table") ||
+      b.node.dataset.materialRole === "table" ||
+      b.node.tagName === "PRE"
+    )
+      return false;
+    if (b.node.dataset.materialId && /^H[1-6]$/.test(b.node.tagName))
+      return false;
+    if (b.role === "references" && step !== 10) return false;
+    return true;
+  });
+  // A document containing only a table/image still supplies an insertion anchor to AI.
+  return available.length ? available : all.slice(0, 1);
+}
+function buildAIChunks(step) {
+  let target = editableBlocks(step);
+  if ($("scope").value === "selection" && selectedIDs.length)
+    target = target.filter((b) => selectedIDs.includes(b.id));
+  if (!target.length) target = editableBlocks(step);
+  if (
+    target.length === 1 &&
+    (target[0].node.tagName === "TABLE" ||
+      target[0].node.querySelector("img,table") ||
+      target[0].node.tagName === "PRE")
+  ) {
+    const id = target[0].id,
+      text =
+        "Защищённый материал. Его содержание доступно в контексте; допустимо добавление пояснения рядом.";
+    return [
+      {
+        ids: [id],
+        blocks: [{ id, text }],
+        text,
+        anchorOnly: true,
+        context:
+          "Документ содержит только материал; ИИ может добавить связное пояснение у этого блока.",
+      },
+    ];
+  }
+  return groupBlocks(target).map((group) => ({
+    ids: group.map((b) => b.id),
+    blocks: group.map((b) => ({ id: b.id, text: b.text })),
+    text: group.map((b) => b.text).join("\n\n"),
+    context:
+      "Подсказки роли раздела (не ограничения): " +
+      [...new Set(group.map((b) => b.role))].join(", "),
+  }));
+}
+function workText() {
+  return blocks()
+    .map((b) => "[" + b.id + "] " + b.text)
+    .join("\n\n");
+}
+async function aiOverview(text, job, key, signal) {
+  if (text.length <= 22000) return "Полный текст:\n" + text;
+  job.contextReads ||= {};
+  const saved = (job.contextReads[key] ||= { parts: [], index: 0, texts: [] });
+  if (!saved.parts.length) {
+    let start = 0;
+    while (start < text.length) {
+      let end = Math.min(start + 18000, text.length);
+      if (end < text.length) {
+        const br = text.lastIndexOf("\n\n", end);
+        if (br > start + 8000) end = br;
+      }
+      saved.parts.push(text.slice(start, end));
+      start = end;
+    }
+  }
+  while (saved.index < saved.parts.length) {
+    progress(
+      job,
+      "ИИ читает " +
+        (key === "work" ? "работу" : "материалы") +
+        ": часть " +
+        (saved.index + 1) +
+        " / " +
+        saved.parts.length,
+    );
+    const r = await apiRequest(
+      { action: "overview", model: job.model, text: saved.parts[saved.index] },
+      signal,
+    );
+    saved.texts.push(r.text);
+    saved.index++;
+    if (!r.cached) job.tokens += tokenCount(r.usage);
+    persist();
+  }
+  let combined = saved.texts
+    .map((t, i) => "Часть " + (i + 1) + ": " + t)
+    .join("\n\n");
+  // All parts were read by AI; only their linked overview is reduced for context-window limits.
+  while (combined.length > 20000) {
+    const next = [];
+    for (let i = 0; i < combined.length; i += 18000) {
+      const r = await apiRequest(
+        {
+          action: "overview",
+          model: job.model,
+          text: combined.slice(i, i + 18000),
+        },
+        signal,
+      );
+      next.push(r.text);
+      if (!r.cached) job.tokens += tokenCount(r.usage);
+    }
+    const reduced = next.join("\n\n");
+    if (reduced.length >= combined.length)
+      throw new Error(
+        "Модель не сократила карту длинной работы. Готовые части сохранены; повторите этап другой доступной моделью.",
+      );
+    combined = reduced;
+  }
+  return (
+    "Карта всей работы после последовательного AI-чтения всех частей:\n" +
+    combined
+  );
+}
+async function fitAIInput(fields, job, key, signal) {
+  const limit = 30000,
+    out = { ...fields };
+  const caps = {
+    context: 36000,
+    sources: 30000,
+    materials: 36000,
+    requirements: 18000,
+  };
+  const tooLarge = () =>
+    Object.keys(caps).filter(
+      (n) => typeof out[n] === "string" && out[n].length > caps[n],
+    );
+  for (
+    let pass = 0;
+    pass < 6 &&
+    (Object.values(out).reduce((sum, v) => sum + String(v || "").length, 0) >
+      limit ||
+      tooLarge().length);
+    pass++
+  ) {
+    const candidates = tooLarge().length
+      ? tooLarge()
+      : Object.keys(caps).filter(
+          (n) => typeof out[n] === "string" && out[n].length > 4000,
+        );
+    const name = candidates.sort((a, b) => out[b].length - out[a].length)[0];
+    if (!name) break;
+    const raw = out[name],
+      parts = [];
+    for (let offset = 0; offset < raw.length; offset += 18000) {
+      const r = await apiRequest(
+        {
+          action: "overview",
+          model: job.model,
+          text: raw.slice(offset, offset + 18000),
+          maxChars: Math.max(
+            1200,
+            Math.floor(4500 / Math.ceil(raw.length / 18000)),
+          ),
+        },
+        signal,
+      );
+      parts.push(r.text);
+      if (!r.cached) job.tokens += tokenCount(r.usage);
+    }
+    out[name] =
+      "AI-сводка полностью прочитанного контекста:\n" + parts.join("\n");
+    if (out[name].length >= raw.length) {
+      out[name] = await aiOverview(raw, job, key + "-" + name, signal);
+      if (out[name].length >= raw.length)
+        throw new Error(
+          "Модель не сократила контекст до своего окна. Попробуйте другую доступную модель; готовые правки сохранены.",
+        );
+    }
+  }
+  return out;
+}
+function normaliseBibliography() {
+  const bib = bibliographyBlocks(blocks());
+  for (const b of bib.slice(1)) {
+    if (!["OL", "UL"].includes(b.node.tagName)) continue;
+    const start = Number(b.node.start) || 1;
+    const paragraphs = Array.from(b.node.children).map((li, i) => {
+      const p = document.createElement("p");
+      p.innerHTML = li.innerHTML;
+      p.prepend(document.createTextNode(start + i + ". "));
+      p.dataset.sourceNumber = start + i;
+      return p;
+    });
+    b.node.replaceWith(...paragraphs);
+  }
+  assignBlocks();
+}
+function cleanReferenceCitations(text, allowed) {
+  return text.replace(/\\?\[\s*\d+(?:\s*[-–—,;]\s*\d+)*\s*\\?\]/g, (value) => {
+    const values = citationNumbersForText(value);
+    const keep = values.filter((n) => allowed.has(n));
+    return keep.length ? "[" + [...new Set(keep)].join(", ") + "]" : "";
+  });
+}
+function sourceContext() {
+  const records = referenceMap().map((r) => ({
+    number: r.number,
+    id: r.id,
+    text: r.text,
+    doi: r.doi,
+  }));
+  return JSON.stringify({
+    referenceMap: records,
+    metadata: state.sources.map((s) => ({
+      ...s,
+      abstract: s.abstract?.slice(0, 1800),
+    })),
+    removed: state.removedSources || [],
+    affectedPassages: state.affectedSourcePassages || [],
+  });
+}
+async function applyMaterialPlan(plan, job) {
+  let count = 0;
+  const warnings = [],
+    tails = new Map();
+  for (const placement of plan.placements || []) {
+    if (controller?.signal.aborted)
+      throw new DOMException("Остановлено", "AbortError");
+    const material = state.materials.find((m) => m.id === placement.materialId);
+    if (!material) {
+      warnings.push("План содержит неизвестный материал; вставка пропущена.");
+      continue;
+    }
+    if (
+      Array.from(
+        editor.querySelectorAll("[data-material-id],[data-asset-id]"),
+      ).some(
+        (n) =>
+          n.dataset.materialId === material.id ||
+          n.dataset.assetId === material.id,
       )
     )
       continue;
-    const title = document.createElement("h2");
-    title.textContent =
-      "Приложение " +
-      String.fromCharCode(
-        1040 + editor.querySelectorAll('[data-material-role="heading"]').length,
-      ) +
-      " — " +
-      a.name;
-    title.dataset.materialId = a.id;
-    title.dataset.materialRole = "heading";
-    editor.append(title);
-    let sheets = a.sheets;
-    if (a.type === "table" && !sheets?.length) {
-      const restored = await assetGet(a.id).catch(() => null);
-      sheets = restored?.sheets;
-      if (!sheets?.length && a.extracted) {
-        const box = document.createElement("div");
-        box.innerHTML = markdownHTML(a.extracted);
-        for (const node of Array.from(box.children)) {
-          node.dataset.materialId = a.id;
-          editor.append(node);
-          changed++;
-        }
+    const anchor = Array.from(editor.children).find(
+      (n) => n.dataset.blockId === (placement.afterId || placement.beforeId),
+    );
+    if (!anchor) {
+      warnings.push(
+        "Модель не указала существующий блок для " +
+          material.name +
+          "; повторный запуск запросит размещение снова.",
+      );
+      continue;
+    }
+    const nodes = [];
+    if (material.type === "image") {
+      const stored = material.data ? material : await assetGet(material.id);
+      if (!stored?.data) {
+        warnings.push("Файл изображения недоступен: " + material.name);
         continue;
       }
-    }
-    if (sheets?.length)
+      const p = document.createElement("p"),
+        img = document.createElement("img");
+      img.src = stored.data;
+      img.alt = material.caption || placement.caption || material.name;
+      img.dataset.assetId = material.id;
+      p.dataset.materialId = material.id;
+      p.append(img);
+      nodes.push(p);
+      const caption = document.createElement("p");
+      caption.textContent =
+        "Рисунок " +
+        (editor.querySelectorAll("img").length + 1) +
+        " — " +
+        (placement.caption || material.caption || material.name);
+      caption.dataset.materialId = material.id;
+      nodes.push(caption);
+    } else if (material.type === "table") {
+      const sheets = material.sheets || (await assetGet(material.id))?.sheets;
+      if (!sheets?.length) {
+        warnings.push("Не найдены исходные ячейки: " + material.name);
+        continue;
+      }
       for (const sheet of sheets) {
         const caption = document.createElement("p");
         caption.textContent =
           "Таблица " +
-          (editor.querySelectorAll("table").length + 1) +
+          (editor.querySelectorAll("table").length +
+            nodes.filter((n) => n.tagName === "TABLE").length +
+            1) +
           " — " +
-          a.name +
+          (placement.caption || material.name) +
           (sheets.length > 1 ? " / " + sheet.name : "");
-        caption.dataset.materialId = a.id;
+        caption.dataset.materialId = material.id;
         const table = tableFromRows(sheet.rows);
-        table.dataset.materialId = a.id;
+        table.dataset.materialId = material.id;
         table.dataset.materialRole = "table";
-        editor.append(caption, table);
-        changed++;
+        nodes.push(caption, table);
       }
-    else {
-      const pre = document.createElement("pre");
-      pre.textContent = a.extracted || "";
-      pre.dataset.materialId = a.id;
-      editor.append(pre);
-      changed++;
+    } else {
+      const p = document.createElement("pre");
+      p.textContent = material.extracted || "";
+      p.dataset.materialId = material.id;
+      nodes.push(p);
     }
+    for (const n of nodes) {
+      n.dataset.blockId = uid();
+      n.classList.add("changed");
+    }
+    const tail = tails.get(anchor) || anchor;
+    if (placement.beforeId) tail.before(...nodes);
+    else tail.after(...nodes);
+    tails.set(anchor, nodes.at(-1));
+    count++;
+    (job.materialPlacements ||= []).push({
+      id: material.id,
+      anchor: anchor.dataset.blockId,
+      caption: placement.caption,
+      reason: placement.reason,
+    });
   }
-  const images = ensureMaterialImages({ scope: $("scope").value });
-  changed += images.length;
   assignBlocks();
-  return changed;
+  return { count, warnings };
 }
-async function runLocalStep(step) {
-  if (running) return;
-  running = true;
-  controller = new AbortController();
-  controls();
-  snapshot("До локального шага " + step.id);
-  state.steps[step.id] = { status: "running" };
-  $("operation").hidden = false;
-  $("operationText").textContent = "Обрабатываем: " + step.label;
-  try {
-    let comment = "",
-      changed = 0,
-      needsReview = false,
-      skipped = false;
-    if (step.id === 3) {
-      changed = await insertMaterialsOnce();
-      comment = changed
-        ? "Материалы вставлены однократно из исходных файлов. Значения таблиц сохранены без генеративного переписывания; крупные таблицы размещены в приложениях."
-        : "Материалы уже присутствуют; повторные копии не добавлены.";
-      if (!state.materials.length) {
-        comment = "Материалы не загружены. Текст сохранён.";
-        needsReview = true;
-      }
+function applySourceReview(plan) {
+  const records = referenceMap(),
+    removed = [],
+    warnings = [];
+  for (const decision of plan.sourceDecisions || []) {
+    if (decision.action !== "remove") continue;
+    const record = records.find((r) => r.number === Number(decision.number));
+    if (!record || !String(decision.reason || "").trim()) {
+      warnings.push("Удаление без записи или объяснения не выполнено.");
+      continue;
     }
-    if (step.id === 4) {
-      if (!bibliographyBlocks(blocks()).length) {
-        comment =
-          "Список источников не найден; проверка пропущена, текст сохранён.";
-        skipped = true;
-      } else {
-        await prepareSources(4, blocks(), controller.signal);
-        const items = state.sources,
-          ok = items.filter((s) => s.status === "verified").length;
-        comment =
-          "Проверены метаданные DOI: " +
-          ok +
-          " подтверждено из " +
-          items.length +
-          ". Записи и нумерация сохранены; подробности — в разделе «Источники». Недоступность базы не приводит к удалению записи.";
-        needsReview = items.some((s) => s.status !== "verified");
-      }
-    }
-    if (step.id === 6) {
-      const topic = $("topic").value.trim();
-      if (!topic) {
-        comment =
-          "Укажите тему в профиле для поиска источников. Текст сохранён.";
-        needsReview = true;
-      } else {
-        const r = await apiRequest(
-          {
-            action: "search",
-            query: topic,
-            exclude: extractDOIs(documentMD()),
-          },
-          controller.signal,
+    const node = editor.querySelector('[data-block-id="' + record.id + '"]');
+    if (!node) continue;
+    removed.push({ ...record, reason: String(decision.reason).slice(0, 1500) });
+    node.remove();
+  }
+  state.removedSources = [...(state.removedSources || []), ...removed];
+  const remaining = new Set(referenceMap().map((r) => r.number));
+  state.affectedSourcePassages ||= [];
+  if (removed.length)
+    for (const b of blocks()) {
+      if (
+        b.node.tagName === "TABLE" ||
+        b.node.dataset.materialId ||
+        bibliographyBlocks(blocks()).some((r) => r.id === b.id)
+      )
+        continue;
+      const before = b.node.innerText;
+      if (
+        !citationNumbersForText(before).some((n) =>
+          removed.some((r) => r.number === n),
+        )
+      )
+        continue;
+      state.affectedSourcePassages.push({
+        id: b.id,
+        before: before.slice(0, 2000),
+        removed: removed
+          .filter((r) => citationNumbersForText(before).includes(r.number))
+          .map((r) => r.number),
+      });
+      const walker = document.createTreeWalker(b.node, NodeFilter.SHOW_TEXT);
+      const texts = [];
+      while (walker.nextNode()) texts.push(walker.currentNode);
+      for (const n of texts)
+        n.nodeValue = cleanReferenceCitations(n.nodeValue, remaining);
+      // A citation may span several inline runs. Collapse only this affected paragraph if necessary.
+      if (
+        citationNumbersForText(b.node.innerText).some((n) => !remaining.has(n))
+      )
+        b.node.textContent = cleanReferenceCitations(
+          b.node.innerText,
+          remaining,
         );
-        const known = new Set(extractDOIs(documentMD()));
-        let number = Math.max(0, ...referenceMap().map((r) => r.number)) + 1;
-        let bib = bibliographyBlocks(blocks());
-        if (!bib.length && r.items?.length) {
-          const h = document.createElement("h2");
-          h.textContent = "Список источников";
-          editor.append(h);
-          bib = blocks().slice(-1);
-        }
-        let anchor = bib.at(-1)?.node;
-        for (const source of r.items || []) {
-          if (known.has(source.doi) || source.relevance?.accepted === false)
-            continue;
-          const p = document.createElement("p");
-          p.textContent =
-            number++ +
-            ". " +
-            (source.authors || []).join(", ") +
-            ". " +
-            source.title +
-            " // " +
-            (source.journal || "") +
-            ". " +
-            (source.year || "б. г.") +
-            ". DOI: " +
-            source.doi +
-            ".";
-          anchor.after(p);
-          anchor = p;
-          known.add(source.doi);
-          state.sources.push({
-            ...source,
-            status: "candidate",
-            number: number - 1,
-            evidence: "metadata-only",
-          });
-          changed++;
-        }
-        comment = changed
-          ? "Добавлено " +
-            changed +
-            " тематических записей из метаданных базы. Номера существующих источников сохранены. Содержание публикаций не выводится из их названий."
-          : "Новых достаточно подходящих записей не найдено. Библиография сохранена; нерелевантные кандидаты не добавлены.";
-        needsReview = !changed;
-      }
+      b.node.classList.add("changed");
     }
-    if (step.id === 10) {
-      const text =
-        $("requirements").value || state.requirements[10]?.text || "";
-      state.formatProfile = formatProfileFromRequirements(text);
-      for (const n of editor.children) {
-        if (/^H[1-6]$/.test(n.tagName)) {
-          const t = n.textContent.replace(/^(\d+(?:\.\d+)*)\.\s+/, "$1 ");
-          if (t !== n.textContent) {
-            n.textContent = t;
-            changed++;
-          }
-        }
-      }
-      comment =
-        "Профиль экспорта обновлён: поля " +
-        state.formatProfile.left +
-        "/" +
-        state.formatProfile.right +
-        "/" +
-        state.formatProfile.top +
-        "/" +
-        state.formatProfile.bottom +
-        " мм, Times New Roman 14 пт. Научное содержание не переписывалось; наличие титула, оглавления и полноту требований проверьте по отчёту.";
-      needsReview = true;
+  state.sources = state.sources.filter(
+    (s) => !removed.some((r) => r.doi && r.doi === s.doi),
+  );
+  state.sourceReview = {
+    date: new Date().toISOString(),
+    decisions: plan.sourceDecisions || [],
+  };
+  return { count: removed.length, warnings };
+}
+function applySourceSelection(plan, candidates) {
+  const known = new Set(extractDOIs(documentMD()));
+  let count = 0;
+  const warnings = [];
+  const selected = (plan.selectedSources || []).map((s) =>
+    typeof s === "string" ? { doi: s, reason: "" } : s,
+  );
+  let anchor = bibliographyBlocks(blocks()).at(-1)?.node;
+  if (selected.length && !anchor) {
+    const h = document.createElement("h2");
+    h.textContent = "Список источников";
+    const app = documentPlan().find((b) => b.role === "appendix");
+    if (app) app.node.before(h);
+    else editor.append(h);
+    anchor = h;
+  }
+  let number =
+    Math.max(
+      0,
+      ...referenceMap().map((r) => r.number),
+      ...(state.removedSources || []).map((r) => r.number),
+    ) + 1;
+  for (const item of selected) {
+    const doi = String(item.doi || "")
+      .toLowerCase()
+      .replace(/^https?:\/\/doi.org\//, "")
+      .replace(/[.,;]+$/, "");
+    const source = candidates.find((s) => s.doi.toLowerCase() === doi);
+    if (!source) {
+      warnings.push(
+        "Предложенная моделью публикация отсутствует среди кандидатов базы и не добавлена: " +
+          doi,
+      );
+      continue;
     }
-    if (step.id === 11) {
-      comment =
-        "Паспорт авторства обновлён по фактическому журналу версий и изменений. Текст работы не переписывался; служебные отметки AI остаются в паспорте, а не в научных абзацах.";
+    if (known.has(doi)) continue;
+    const p = document.createElement("p");
+    p.dataset.sourceNumber = number;
+    p.textContent =
+      number +
+      ". " +
+      (source.authors || []).join(", ") +
+      ". " +
+      source.title +
+      " // " +
+      (source.journal || "") +
+      ". " +
+      (source.year || "б. г.") +
+      ". DOI: " +
+      source.doi +
+      ".";
+    anchor.after(p);
+    anchor = p;
+    known.add(doi);
+    state.sources.push({
+      ...source,
+      number,
+      status: "candidate",
+      selectedByAI: true,
+      reason: item.reason || "",
+      evidence: source.abstract ? "abstract" : "metadata-only",
+    });
+    number++;
+    count++;
+  }
+  assignBlocks();
+  return { count, warnings };
+}
+async function prepareAIStage(job, signal) {
+  if (!job.overview)
+    job.overview = await aiOverview(workText(), job, "work", signal);
+  if (!job.sourcePrepared) {
+    try {
+      job.sources = await prepareSources(job.step, blocks(), signal);
+    } catch (e) {
+      if (signal.aborted) throw e;
+      job.sources = JSON.stringify({
+        note: e.message,
+        referenceMap: referenceMap(),
+      });
+      job.sourceWarning = e.message;
     }
-    await finishLocal(step, comment, { changed, needsReview, skipped });
-  } catch (e) {
-    if (e.name === "AbortError") toast("Операция остановлена, текст сохранён");
-    else showFeedback(step, e.message, true);
-    state.steps[step.id] = { status: "error" };
-  } finally {
-    running = false;
-    controller = null;
-    $("operation").hidden = true;
-    controls();
+    job.sourcePrepared = true;
     persist();
   }
+  if (job.step === 6 && !job.sourceCandidates) {
+    try {
+      job.sourceCandidates = JSON.parse(job.sources).candidates || [];
+    } catch {
+      job.sourceCandidates = [];
+    }
+  }
+  if (job.sources?.length > 28000)
+    job.sources = await aiOverview(job.sources, job, "sources", signal);
+  if (![3, 4, 6, 8].includes(job.step) || job.planApplied) return;
+  let materials = job.materials || "";
+  if (materials.length > 30000)
+    materials = await aiOverview(materials, job, "materials", signal);
+  progress(
+    job,
+    "ИИ выбирает " +
+      (job.step === 3
+        ? "места интеграции материалов"
+        : job.step === 4
+          ? "источники для сохранения и удаления"
+          : job.step === 8
+            ? "место и формулировку научной новизны"
+            : "релевантные новые публикации"),
+  );
+  let result;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const input = await fitAIInput(
+        {
+          context: job.overview,
+          materials,
+          sources: job.sources || "",
+          profile: job.profile,
+        },
+        job,
+        "plan-" + job.step,
+        signal,
+      );
+      result = await apiRequest(
+        { action: "plan", step: job.step, model: job.model, ...input },
+        signal,
+      );
+      break;
+    } catch (e) {
+      if (e.code !== "PLAN_FORMAT" || attempt) throw e;
+    }
+  }
+  if (signal.aborted) throw new DOMException("Остановлено", "AbortError");
+  job.plan = result.plan;
+  job.materialContext = materials;
+  job.materialFacts = job.materials;
+  persist();
+  const before = documentMD();
+  let applied;
+  if (job.step === 3) {
+    applied = await applyMaterialPlan(result.plan, job);
+    const unplaced = () =>
+      state.materials.filter(
+        (a) =>
+          !Array.from(
+            editor.querySelectorAll("[data-material-id],[data-asset-id]"),
+          ).some(
+            (n) => n.dataset.materialId === a.id || n.dataset.assetId === a.id,
+          ),
+      );
+    if (unplaced().length) {
+      const retry = await apiRequest(
+        {
+          action: "plan",
+          step: 3,
+          model: job.model,
+          context:
+            job.overview +
+            "\nОбязательно выбери существующие ID абзацев для ещё не размещённых материалов: " +
+            unplaced()
+              .map((a) => a.id)
+              .join(", "),
+          materials,
+          sources: job.sources || "",
+          profile: job.profile,
+        },
+        signal,
+      );
+      if (signal.aborted) throw new DOMException("Остановлено", "AbortError");
+      const second = await applyMaterialPlan(retry.plan, job);
+      applied.count += second.count;
+      applied.warnings = second.warnings;
+      job.plan.placements.push(...retry.plan.placements);
+      if (!retry.cached) job.tokens += tokenCount(retry.usage);
+      if (unplaced().length)
+        applied.warnings.push(
+          "Модель не разместила часть материалов; существующие данные сохранены. Повторите этап для оставшихся файлов.",
+        );
+    }
+  }
+  if (job.step === 8) {
+    const available = editableBlocks(8),
+      ids = new Set((result.plan.focus || []).map((f) => f.id));
+    const chosen = available.filter((b) => ids.has(b.id));
+    job.planFocusCount = chosen.length;
+    job.chunks = chosen.length
+      ? chosen.length === 1 &&
+        (chosen[0].node.tagName === "TABLE" ||
+          chosen[0].node.querySelector("img,table") ||
+          chosen[0].node.tagName === "PRE")
+        ? buildAIChunks(8)
+        : groupBlocks(chosen).map((group) => ({
+            ids: group.map((b) => b.id),
+            blocks: group.map((b) => ({ id: b.id, text: b.text })),
+            text: group.map((b) => b.text).join("\n\n"),
+            context: "Место новизны выбрано ИИ на основании всей работы.",
+          }))
+      : buildAIChunks(8);
+    applied = {
+      count: 0,
+      warnings: chosen.length
+        ? []
+        : [
+            "Модель не уточнила точные ID для новизны; выполнена содержательная проверка всех доступных блоков.",
+          ],
+    };
+  }
+  if (job.step === 4) applied = applySourceReview(result.plan);
+  if (job.step === 6)
+    applied = applySourceSelection(result.plan, job.sourceCandidates || []);
+  if (!result.cached) job.tokens += tokenCount(result.usage);
+  const comment =
+    (result.comment || "План модели применён.") +
+    " " +
+    (job.step === 3
+      ? "Вставлено материалов: "
+      : job.step === 4
+        ? "Удалено записей: "
+        : job.step === 8
+          ? "Запланировано смысловых мест: "
+          : "Добавлено источников: ") +
+    (job.step === 8 ? job.planFocusCount || 0 : applied.count) +
+    "." +
+    (applied.warnings.length ? " " + applied.warnings.join(" ") : "");
+  job.comments.push({
+    comment,
+    changed: applied.count,
+    needsReview: Boolean(applied.warnings.length),
+    warnings: applied.warnings,
+  });
+  job.planApplied = true;
+  job.materials = "";
+  job.sources = sourceContext();
+  if (job.sources.length > 28000)
+    job.sources = await aiOverview(job.sources, job, "updated-sources", signal);
+  if ([4, 6].includes(job.step)) job.chunks = [];
+  else if (job.step === 3) job.chunks = buildAIChunks(3);
+  persist();
+  await logEvent(job.step === 8 ? "ai-plan" : "ai-edit", {
+    step: job.step,
+    model: job.model,
+    comment,
+    changedBlocks: applied.count,
+    beforeText: before,
+    afterText: documentMD(),
+    plan: job.plan,
+  });
 }
+function aiWorkContext(job, c) {
+  const additions = {
+    referenceMap: referenceMap().map((r) => ({
+      number: r.number,
+      id: r.id,
+      text: r.text.slice(0, 260),
+      doi: r.doi,
+    })),
+    removedSources: state.removedSources || [],
+    affectedPassages: job.step === 5 ? state.affectedSourcePassages || [] : [],
+    materialPlacements: job.materialPlacements || [],
+    alreadyApplied: job.comments.map((c) => c.comment).slice(-8),
+  };
+  return (
+    (job.overview || "") +
+    "\n" +
+    JSON.stringify(additions) +
+    "\nТекущие блоки и соседние разделы: " +
+    c.context
+  ).slice(0, 35000);
+}
+
 async function finishLocal(step, text, options = {}) {
   state.results[step.id] = {
     text: step.edit ? "" : text,
@@ -28109,16 +28581,8 @@ async function applyStep() {
     return;
   }
   if (!isUnlocked(step.id, state.steps)) return;
-  if ([3, 4, 6, 10, 11].includes(step.id)) {
-    await runLocalStep(step);
-    return;
-  }
   if (step.id === 1) {
     await finishLocal(step, localDiagnosis(blocks()));
-    return;
-  }
-  if (step.id === 14) {
-    await finishLocal(step, localFinalReport());
     return;
   }
   if (
@@ -28132,116 +28596,40 @@ async function applyStep() {
     toast("Добавьте замечания научного руководителя.", "error");
     return;
   }
-  if (step.id === 3 && !state.materials.length) {
-    toast("Добавьте материалы работы.", "error");
-    return;
-  }
-  if (
-    step.id === 3 &&
-    state.materials.some((a) => a.type === "image" && !a.data)
-  ) {
+  const selected = $("modelSelect").selectedOptions[0];
+  if (selected?.disabled) {
     toast(
-      "Изображения отсутствуют в хранилище. Прикрепите файлы заново.",
+      selected.title || "Выбранная модель недоступна. Проверьте подключение.",
       "error",
     );
     return;
   }
-  snapshot("Перед подготовкой фрагментов");
+  snapshot("До шага " + step.id + " · " + step.label);
+  if ([4, 6, 10].includes(step.id)) normaliseBibliography();
   splitLongLists(step.id);
-  let all = documentPlan(),
-    target = step.edit ? targetsForStep(step.id, all) : all;
-  const scope = $("scope").value;
-  if (step.id === 4 && !bibliographyBlocks(all).length) {
-    snapshot("Перед пропуском анализа источников");
-    state.steps[4] = {
-      status: "skipped",
-      date: new Date().toISOString(),
-    };
-    state.results[4] = {
-      comment:
-        "Список литературы не найден. Шаг пропущен, текст сохранён. Добавьте библиографию и запустите проверку повторно.",
-    };
-    showFeedback(step, state.results[4].comment);
-    await logEvent("skip", { step: 4, reason: "no-bibliography" });
-    renderSteps();
-    return;
-  }
-  if (scope === "selection") {
-    if (!selectedIDs.length) {
-      toast("Сначала выделите абзацы в редакторе.", "error");
-      return;
-    }
-    target = all.filter(
-      (b) =>
-        selectedIDs.includes(b.id) &&
-        (!step.edit ||
-          (!b.locked && !["front", "references", "appendix"].includes(b.role))),
-    );
-  } else if ([4, 6].includes(step.id)) {
-    const bib = bibliographyBlocks(all);
-    if (!bib.length) {
-      const h = document.createElement("h2");
-      h.textContent = "Список литературы";
-      editor.append(h);
-      all = blocks();
-      target = [all.at(-1)];
-    } else target = step.id === 6 ? bib.slice(-1) : bib;
-  }
   let chunks;
   try {
-    const sections = [];
-    for (const block of target) {
-      const last = sections.at(-1);
-      if (last?.section === block.section) last.items.push(block);
-      else sections.push({ section: block.section, items: [block] });
-    }
-    chunks = sections
-      .flatMap((section) => groupBlocks(section.items))
-      .map((group) => {
-        const start = all.indexOf(group[0]),
-          end = all.indexOf(group.at(-1));
-        return {
-          ids: group.map((b) => b.id),
-          blocks: group.map((b) => ({ id: b.id, text: b.text })),
-          text: group.map((b) => b.text).join("\n\n"),
-          section: group[0].role,
-          context:
-            "Текущий раздел: " +
-            group[0].role +
-            ". " +
-            all
-              .slice(Math.max(0, start - 1), start)
-              .concat(all.slice(end + 1, end + 2))
-              .map((b) => b.text)
-              .join("\n\n")
-              .slice(0, 4000),
-        };
-      });
-    if ([12, 13].includes(step.id) && scope === "auto")
-      chunks = [
-        {
-          ids: [],
-          text: infoBrief(all),
-          context:
-            "Нужно подготовить единый практический результат по переданным выдержкам. Отметь ограничения данных.",
-        },
-      ];
-    if (!chunks.length) {
-      await finishLocal(
-        step,
-        "Для этого этапа не найден подходящий раздел. Выберите нужные абзацы вручную; текст сохранён.",
-        { needsReview: true },
-      );
-      return;
-    }
-    if (step.id === 3) materialsContext();
+    chunks = step.edit
+      ? buildAIChunks(step.id)
+      : $("scope").value === "all"
+        ? groupBlocks(blocks()).map((g) => ({
+            ids: g.map((b) => b.id),
+            text: g.map((b) => b.text).join("\n\n"),
+            context: structureContext(blocks()),
+          }))
+        : [
+            {
+              ids: [],
+              text: infoBrief(blocks()),
+              context: structureContext(blocks()),
+            },
+          ];
   } catch (e) {
     toast(e.message, "error");
     return;
   }
-  snapshot("До шага " + step.id + " · " + step.label);
-  persist();
   state.job = {
+    protocol: "ai-2.4",
     id: uid(),
     step: step.id,
     model: $("modelSelect").value,
@@ -28251,7 +28639,12 @@ async function applyStep() {
     analyses: [],
     tokens: 0,
     cacheHits: 0,
-    requirements: step.fileUpload ? $("requirements").value : "",
+    requirements: step.fileUpload
+      ? $("requirements").value
+      : JSON.stringify({
+          supervisor: state.requirements[2]?.text || "",
+          formatting: step.id >= 10 ? state.requirements[10]?.text || "" : "",
+        }),
     materials: step.id === 3 ? materialsContext() : "",
     sources: null,
     profile: JSON.stringify({
@@ -28262,8 +28655,8 @@ async function applyStep() {
     started: Date.now(),
     beforeHTML: cleanHTML(editor.innerHTML),
     foreignConsent: $("consentCheckbox").checked,
-    structure: structureContext(all),
-    scope,
+    structure: structureContext(blocks()),
+    scope: $("scope").value,
     synthesize: $("economySummary").checked,
   };
   persist();
@@ -28381,40 +28774,32 @@ function numericTokens(text) {
 }
 function operationProblem(before, after, node, step, insertion = false) {
   if (
-    node?.dataset.materialId ||
     node?.tagName === "TABLE" ||
-    node?.querySelector("img,table")
+    node?.querySelector("img,table") ||
+    node?.dataset.materialRole === "table" ||
+    node?.tagName === "PRE"
   )
-    return "Существующий материал сохранён без переписывания";
-  if (node && /^H[1-6]$/.test(node.tagName))
-    return "Заголовок защищён от генеративного переписывания";
-  if (/^#{1,6}\s/m.test(after))
-    return "Заголовки разделов не вставляются моделью повторно";
+    return "Исходные ячейки и файлы сохранены без перегенерации";
   if (
-    /(?:уточнено|исправлено|удалены упоминания|добавлены пояснения|для улучшения связности текст|текст был структурирован|(?:AI|ИИ|АТ|АГ) использовался для)/i.test(
+    /(?:для улучшения связности текст|текст был структурирован|(?:AI|ИИ) использовался для анализа)/i.test(
       after,
     ) &&
-    !/(?:уточнено|исправлено|добавлены пояснения|использовался для анализа)/i.test(
-      before,
-    )
+    !/(?:использовался для анализа)/i.test(before)
   )
     return "Служебное пояснение оставлено в комментарии";
-  const oldNumbers = numericTokens(before),
-    nextNumbers = numericTokens(after);
-  if (
-    oldNumbers.some((n) => !nextNumbers.includes(n)) ||
-    nextNumbers.some((n) => !oldNumbers.includes(n))
-  )
-    return "Исходные числовые значения сохранены; изменение требует отдельного подтверждения автора";
-  const oldRefs = citationNumbersForText(before),
-    newRefs = citationNumbersForText(after);
-  if (oldRefs.some((n) => !newRefs.includes(n)))
-    return "Номера существующих ссылок сохранены";
-  const knownRefs = new Set(referenceMap().map((r) => r.number));
-  if (newRefs.some((n) => !knownRefs.has(n) && !oldRefs.includes(n)))
-    return "Ссылка на отсутствующую запись пропущена";
-  if (after.length > Math.max(1100, before.length * 1.8 + 250))
-    return "Избыточное расширение фрагмента пропущено";
+  if (!/^H[1-6]$/.test(node?.tagName || "")) {
+    const old = numericTokens(before),
+      fresh = numericTokens(after);
+    if (old.some((n) => !fresh.includes(n)))
+      return "Изменение исходного числового значения не применено";
+    const known = new Set(
+      numericTokens(documentMD() + " " + (state.job?.materialFacts || "")),
+    );
+    if (fresh.some((n) => !old.includes(n) && !known.has(n)))
+      return "Новые числовые результаты вне переданных данных не добавлены";
+  }
+  if (after.length > Math.max(4500, before.length * 3 + 1000))
+    return "Слишком большое расширение одного блока пропущено";
   return "";
 }
 function citationNumbersForText(text) {
@@ -28486,6 +28871,11 @@ function applyScopedPatches(chunk, result) {
         "Добавленные DOI вне библиографии исключены; ссылки в тексте задаются номерами источников",
       );
     if (!cleaned.text.trim()) return null;
+    if (!/^H[1-6]$/.test(node?.tagName || ""))
+      cleaned.text = cleanReferenceCitations(
+        cleaned.text,
+        new Set(referenceMap().map((r) => r.number)),
+      );
     const problem = operationProblem(old, cleaned.text, node, step, insertion);
     if (problem) {
       warn(problem);
@@ -28497,18 +28887,27 @@ function applyScopedPatches(chunk, result) {
     }
     const box = document.createElement("div");
     box.innerHTML = markdownHTML(cleaned.text);
-    if (
-      box.querySelector("h1,h2,h3,h4,h5,h6,img") ||
-      (box.querySelector("table") &&
-        !(
-          insertion &&
-          step === 2 &&
-          nodes.get(chunk.ids[0])?.role === "review" &&
-          /таблиц/i.test(state.job?.requirements || "")
-        ))
-    ) {
-      warn("Структура или повторная таблица из ответа не применены");
+    if (box.querySelector("img")) {
+      warn("Изображение размещается только планом по исходному файлу");
       return null;
+    }
+    if (box.querySelector("table") && !(insertion && [2, 3].includes(step))) {
+      warn("Повторная таблица не применена");
+      return null;
+    }
+    for (const heading of Array.from(
+      box.querySelectorAll("h1,h2,h3,h4,h5,h6"),
+    )) {
+      const key = sectionTitle(heading.textContent).toLowerCase();
+      if (
+        Array.from(editor.querySelectorAll("h1,h2,h3,h4,h5,h6")).some(
+          (h) =>
+            h !== node && sectionTitle(h.textContent).toLowerCase() === key,
+        )
+      ) {
+        heading.remove();
+        warn("Повтор существующего заголовка исключён");
+      }
     }
     if (!box.children.length) return null;
     return Array.from(box.children);
@@ -28517,8 +28916,10 @@ function applyScopedPatches(chunk, result) {
     const block = nodes.get(change.id);
     if (
       !block ||
-      block.locked ||
-      ["front", "references", "appendix"].includes(block.role)
+      block.node.tagName === "TABLE" ||
+      block.node.querySelector("img,table") ||
+      block.node.dataset.materialRole === "table" ||
+      (block.role === "references" && step !== 10)
     ) {
       warn("Правка вне разрешённой области пропущена");
       continue;
@@ -28540,7 +28941,7 @@ function applyScopedPatches(chunk, result) {
   for (const insertion of result.patches.insertions || []) {
     const id = insertion.afterId || insertion.beforeId,
       block = nodes.get(id);
-    if (!block || ["front", "references", "appendix"].includes(block.role)) {
+    if (!block || block.role === "references") {
       warn("Вставка вне разрешённого раздела пропущена");
       continue;
     }
@@ -28548,7 +28949,7 @@ function applyScopedPatches(chunk, result) {
     if (!fresh) continue;
     if (
       (state.job?.insertedChars || 0) + insertion.text.length >
-      Math.max(1800, (state.job?.beforeHTML?.length || 0) * 0.25)
+      Math.max(6000, (state.job?.beforeHTML?.length || 0) * 0.45)
     ) {
       warn("Лимит расширения этапа достигнут; лишняя вставка пропущена");
       continue;
@@ -28575,11 +28976,23 @@ function applyScopedPatches(chunk, result) {
   }
   for (const id of result.patches.deletions || []) {
     const block = nodes.get(id);
-    if (block && !block.locked && duplicateOfDocument(block.text, block.node)) {
+    if (
+      block &&
+      !block.locked &&
+      (duplicateOfDocument(block.text, block.node) ||
+        ([2, 5, 9].includes(step) &&
+          block.node.tagName === "P" &&
+          (state.job?.deletedChars || 0) + block.text.length <
+            Math.max(500, (state.job?.beforeHTML?.length || 0) * 0.25)))
+    ) {
       before.push(block.node.innerText);
+      if (state.job)
+        state.job.deletedChars =
+          (state.job.deletedChars || 0) + block.text.length;
       block.node.remove();
       changed++;
-    } else warn("Удаление уникального исходного блока не применено");
+    } else
+      warn("Удаление структурного или большого исходного блока не применено");
   }
   lastDiff = { before: before.join("\n\n"), after: after.join("\n\n") };
   setTimeout(
@@ -28605,6 +29018,8 @@ function applyChunk(chunk, result) {
     throw new Error(
       "Редактируемый фрагмент изменился. Автозамена остановлена.",
     );
+  if (chunk.anchorOnly && result.patches)
+    return applyScopedPatches(chunk, result);
   const oldMD = nodes.map(blockMD).join("\n\n");
   if (normalizeText(oldMD) !== normalizeText(chunk.text))
     throw new Error(
@@ -28810,7 +29225,7 @@ function tokenCount(usage) {
 async function runJob() {
   const job = state.job;
   if (!job || running) return;
-  if ([3, 4, 6, 10, 11].includes(job.step)) {
+  if (job.protocol !== "ai-2.4") {
     state.selected = job.step;
     state.job = null;
     await applyStep();
@@ -28825,101 +29240,72 @@ async function runJob() {
   ticker = setInterval(() => progress(job), 1000);
   const step = STEPS[job.step - 1];
   try {
-    if (job.sources === null)
-      job.sources = await prepareSources(job.step, blocks(), controller.signal);
+    await prepareAIStage(job, controller.signal);
     persist();
     while (job.index < job.chunks.length) {
       const c = job.chunks[job.index];
-      let context = (job.structure || "") + "\n" + c.context;
+      let context = aiWorkContext(job, c);
       if (job.step === 10)
-        context +=
-          "\nАудит исходного DOCX: " +
-          JSON.stringify(state.docxAudit || "Файл не загружен");
-      if (job.step === 11)
-        context +=
-          "\nЖурнал платформы: " +
-          JSON.stringify(
-            state.events.slice(-12).map((e) => ({
+        context =
+          JSON.stringify({ docxAudit: state.docxAudit }) + "\n" + context;
+      if (job.step === 11 || job.step === 14)
+        context =
+          JSON.stringify({
+            journal: state.events.slice(-25).map((e) => ({
               date: e.date,
               type: e.type,
               step: e.step,
-              model: e.model,
-            })),
-          );
-      if (job.step === 14)
-        context +=
-          "\nИтоговые статусы: " +
-          JSON.stringify(state.steps) +
-          "\nРезультаты: " +
-          JSON.stringify(state.results).slice(0, 5000);
-      if (job.step === 3)
-        context +=
-          "\nУже вставленные рисунки: " +
-          Array.from(editor.querySelectorAll("[data-asset-id]"))
-            .map((n) => n.dataset.assetId)
-            .join(",");
-      let sources = job.sources;
-      if (job.step === 4) {
-        const data = JSON.parse(job.sources),
-          dois = extractDOIs(c.text);
-        sources = JSON.stringify({
-          ...data,
-          verified: data.verified.filter((x) => dois.includes(x.doi)),
-        });
-      }
-      if (sources.length > 18000)
-        throw new Error(
-          "Слишком много метаданных. Обработайте меньшую область документа.",
-        );
-      if (job.step === 10)
-        context =
-          "Аудит исходного DOCX: " +
-          JSON.stringify(
-            state.docxAudit
-              ? {
-                  scope: state.docxAudit.scope,
-                  issues: state.docxAudit.issues,
-                  fonts: state.docxAudit.fonts,
-                  fields: state.docxAudit.fields,
-                }
-              : null,
-          ) +
-          "\n" +
-          context;
-      if (job.step === 11)
-        context =
-          "Журнал подтверждённых изменений: " +
-          JSON.stringify(
-            state.events.slice(-15).map((e) => ({
-              date: e.date,
-              type: e.type,
-              step: e.step,
-              model: e.model,
               changedBlocks: e.changedBlocks,
             })),
-          ) +
+            steps: state.steps,
+            comments: Object.fromEntries(
+              Object.entries(state.results).map(([id, r]) => [
+                id,
+                {
+                  comment: (r.comment || r.text || "").slice(0, 1000),
+                  needsReview: r.needsReview,
+                },
+              ]),
+            ),
+          }) +
           "\n" +
           context;
+      const sources = job.sources || sourceContext();
       let result;
       try {
-        result = await apiRequest(
+        const request = {
+          action: "run",
+          step: job.step,
+          model: job.model,
+          text: c.text,
+          context: context.slice(0, 36000),
+          requirements: job.requirements,
+          materials:
+            job.step === 3 &&
+            (job.materialPlacements || []).some((p) => c.ids.includes(p.anchor))
+              ? job.materialContext || ""
+              : "",
+          sources,
+          profile: job.profile,
+          partial: !step.edit && job.chunks.length > 1,
+          ...(step.edit && c.blocks
+            ? { responseFormat: "patches-v1", blocks: c.blocks }
+            : {}),
+        };
+        const fitted = await fitAIInput(
           {
-            action: "run",
-            step: job.step,
-            model: job.model,
-            text: c.text,
-            context: context.slice(0, 6500),
-            requirements: job.requirements,
-            materials: job.materials,
-            sources,
-            profile: job.profile,
-            partial: !step.edit && job.chunks.length > 1,
-            ...(step.edit && c.blocks
-              ? { responseFormat: "patches-v1", blocks: c.blocks }
-              : {}),
+            text: request.text,
+            context: request.context,
+            requirements: request.requirements,
+            materials: request.materials,
+            sources: request.sources,
+            profile: request.profile,
           },
+          job,
+          "edit-" + job.step,
           controller.signal,
         );
+        result = await apiRequest({ ...request, ...fitted }, controller.signal);
       } catch (e) {
         if (
           !controller.signal.aborted &&
@@ -29002,16 +29388,15 @@ async function runJob() {
       if (event) await logEvent("ai-edit", event);
       progress(job);
     }
-    if (job.step === 3) {
-      const inserted = ensureMaterialImages(job);
-      if (inserted.length) {
-        job.materialFallbackCount = inserted.length;
-        await logEvent("material-insert", {
-          step: 3,
-          source: "uploaded-files",
-          images: inserted,
-        });
-      }
+    if (job.step === 10) {
+      state.formatProfile = formatProfileFromRequirements(job.requirements);
+      job.comments.push({
+        comment:
+          "Профиль экспорта применён по требованиям; параметры исходного Word не переписаны.",
+        changed: 0,
+        needsReview: false,
+        warnings: [],
+      });
     }
     let output;
     if (step.edit) {
@@ -29312,6 +29697,11 @@ function showHistory() {
         state.results = structuredClone(v.results || {});
         state.sources = structuredClone(v.sources || []);
         state.formatProfile = structuredClone(v.formatProfile || null);
+        state.removedSources = structuredClone(v.removedSources || []);
+        state.affectedSourcePassages = structuredClone(
+          v.affectedSourcePassages || [],
+        );
+        state.sourceReview = structuredClone(v.sourceReview || null);
         state.job = null;
         selectedIDs = [];
         await logEvent("restore", { versionId: v.id });
@@ -30207,6 +30597,8 @@ async function init() {
     controls();
     persist();
     if (localStorage.getItem(STORAGE)) localStorage.removeItem(LEGACY_STORAGE);
+    $("probeModel").onclick = probeModel;
+    $("modelSelect").addEventListener("change", showModelStatus);
     health();
   } catch (e) {
     toast("Не удалось восстановить черновик: " + e.message, "error");
