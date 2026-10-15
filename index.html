@@ -2,7 +2,7 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="application-version" content="2.6.0" />
+    <meta name="application-version" content="2.7.0" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="theme-color" content="#4f46e5" />
     <title>ВКР-Контур — от черновика до защиты</title>
@@ -1469,9 +1469,6 @@
                 </option>
               </optgroup>
               <optgroup label="Быстрые">
-                <option value="@cf/google/gemma-3-12b-it" disabled>
-                  Gemma 3 12B · архив
-                </option>
                 <option value="@cf/google/gemma-4-26b-a4b-it">
                   Gemma 4 · бесплатная квота
                 </option>
@@ -25860,18 +25857,25 @@ const STEPS = [
   },
   {
     id: 12,
+    label: "Финальная вычитка",
+    desc: "Чистый текст без изменения данных",
+    edit: true,
+    repeatable: true,
+  },
+  {
+    id: 13,
     label: "Подготовка к защите",
     desc: "Речь, слайды и вопросы",
     edit: false,
   },
   {
-    id: 13,
+    id: 14,
     label: "Публикация",
     desc: "План статьи и cover letter",
     edit: false,
   },
   {
-    id: 14,
+    id: 15,
     label: "Финальный пакет",
     desc: "Отчёт и комплект артефактов",
     edit: false,
@@ -26026,7 +26030,7 @@ function groupBlocks(blocks, max = 3600) {
 function isUnlocked(id, states) {
   const first =
     STEPS.find((s) => !["done", "skipped"].includes(states[s.id]?.status))
-      ?.id || 14;
+      ?.id || STEPS.length;
   return id <= first || Boolean(STEPS.find((s) => s.id === id)?.repeatable);
 }
 function protectResult(oldText, newText, formatted = true) {
@@ -26061,6 +26065,7 @@ const $ = (id) => document.getElementById(id),
 function emptyState() {
   return {
     version: 2,
+    pipelineVersion: 3,
     stageSnapshots: [],
     projectId: uid(),
     projectName: "Новая ВКР",
@@ -26158,7 +26163,9 @@ async function openProject(id, create = false) {
     persist();
     const saved = create ? null : localStorage.getItem("vkr-project:" + id);
     if (!create && !saved) throw new Error("Проект не найден в этом браузере.");
-    state = create ? emptyState() : { ...emptyState(), ...JSON.parse(saved) };
+    state = create
+      ? emptyState()
+      : { ...emptyState(), ...migratePipeline(JSON.parse(saved)) };
     STORAGE = "vkr-project:" + state.projectId;
     requestCache.clear();
     selectedIDs = [];
@@ -26692,9 +26699,9 @@ function updateStats() {
   const done = Object.values(state.steps).filter((s) =>
     ["done", "skipped"].includes(s.status),
   ).length;
-  $("statSteps").textContent = done + "/14";
-  $("progressText").textContent = done + " / 14";
-  $("progressFill").style.width = (done / 14) * 100 + "%";
+  $("statSteps").textContent = done + "/" + STEPS.length;
+  $("progressText").textContent = done + " / " + STEPS.length;
+  $("progressFill").style.width = (done / STEPS.length) * 100 + "%";
 }
 function renderSteps() {
   const list = $("stepsList");
@@ -26887,13 +26894,53 @@ function apiEndpoint() {
   return url.toString();
 }
 const requestCache = new Map();
+function providerFamily(model) {
+  return String(model).startsWith("@cf/")
+    ? "cloudflare"
+    : String(model).startsWith("zveno/")
+      ? "zveno"
+      : "yandex";
+}
+function quotaAvailability() {
+  try {
+    return JSON.parse(sessionStorage.getItem("vkr-provider-quota") || "{}");
+  } catch {
+    return {};
+  }
+}
+function applyQuotaAvailability() {
+  const records = quotaAvailability();
+  for (const option of $("modelSelect").options) {
+    const health = healthModels.find((m) => m.id === option.value),
+      until = records[apiEndpoint() + "|" + providerFamily(option.value)];
+    const limited = until > Date.now();
+    option.disabled =
+      Boolean(health && (!health.configured || health.freeAllowed === false)) ||
+      limited;
+    if (limited)
+      option.title =
+        "Бесплатная квота провайдера исчерпана до " +
+        new Date(until).toLocaleString("ru-RU") +
+        ". Можно выбрать другого провайдера.";
+    else if (health?.freeReason) option.title = health.freeReason;
+  }
+}
+function recordProviderQuota(model, seconds) {
+  const records = quotaAvailability(),
+    until = Date.now() + Math.max(60, Math.min(86400, seconds || 3600)) * 1000;
+  records[apiEndpoint() + "|" + providerFamily(model)] = until;
+  try {
+    sessionStorage.setItem("vkr-provider-quota", JSON.stringify(records));
+  } catch {}
+  applyQuotaAvailability();
+}
 async function apiRequest(body, signal) {
   const key = JSON.stringify(body),
     hit = requestCache.get(key);
   if (hit && hit.at > Date.now() - 300000)
     return { ...hit.value, cached: true };
   const cacheId =
-    "response:" + (await digest("pipeline-2.6\n" + apiEndpoint() + "\n" + key));
+    "response:" + (await digest("pipeline-2.7\n" + apiEndpoint() + "\n" + key));
   const cacheTTL = ["run", "synthesize", "plan", "overview"].includes(
     body.action,
   )
@@ -26971,6 +27018,12 @@ async function apiRequest(body, signal) {
         data.error?.message || "Ошибка API (HTTP " + res.status + ")",
       );
       e.code = data.error?.code;
+      e.retryAfter =
+        Number(data.error?.retryAfter) ||
+        Number(res.headers.get("Retry-After")) ||
+        0;
+      if (e.code === "FREE_QUOTA_EXHAUSTED" && body.model)
+        recordProviderQuota(body.model, e.retryAfter);
       throw e;
     }
     while (requestCache.size >= 40)
@@ -27342,9 +27395,9 @@ async function health() {
     if (!response.ok || !d.ok || d.transport !== "http-fragments")
       throw new Error("Нужна новая версия backend");
     healthModels = d.models || [];
-    if (d.version && d.version !== "2.6.0")
+    if (d.version && d.version !== "2.7.0")
       toast(
-        "Обновите Cloud Function до 2.6.0: страница использует новый AI-планировщик.",
+        "Обновите Cloud Function до 2.7.0: страница использует новый AI-планировщик.",
         "info",
       );
     $("connectionDot").className = "status-dot online";
@@ -27356,12 +27409,13 @@ async function health() {
       );
       if (m?.freeReason) option.title = m.freeReason;
     }
+    applyQuotaAvailability();
     showModelStatus();
     const current = $("modelSelect").selectedOptions[0];
     if (current?.disabled && !running && !state.job) {
       const next =
         Array.from($("modelSelect").options).find(
-          (o) => !o.disabled && o.value.startsWith("zveno/"),
+          (o) => !o.disabled && o.value === "yandexgpt-5-lite",
         ) || Array.from($("modelSelect").options).find((o) => !o.disabled);
       if (next) {
         $("modelSelect").value = next.value;
@@ -27824,6 +27878,34 @@ function captureSelection() {
     .filter((n) => range.intersectsNode(n))
     .map((n) => n.dataset.blockId);
 }
+function materialManifest() {
+  return JSON.stringify(
+    state.materials.map((a) => ({
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      description: a.caption || "",
+      sheets: (a.sheets || []).map((sheet) => ({
+        name: sheet.name,
+        columns: sheet.rows?.[0] || [],
+        rowCount: Math.max(0, (sheet.rows?.length || 0) - 1),
+      })),
+    })),
+  ).slice(0, 8000);
+}
+function anchoredMaterialCaption(material, proposed) {
+  const caption = String(proposed || "").trim(),
+    known = [
+      material.caption,
+      material.name,
+      material.extracted,
+      JSON.stringify(material.sheets || []),
+    ].join(" ");
+  const years = caption.match(/\b(?:19|20)\d{2}\b/g) || [];
+  if (years.some((v) => !new RegExp("\\b" + v + "\\b").test(known)))
+    return material.caption || material.name;
+  return caption || material.caption || material.name;
+}
 function materialsContext() {
   return JSON.stringify(
     state.materials.map((a) => ({
@@ -27832,7 +27914,7 @@ function materialsContext() {
       name: a.name,
       caption: a.caption || "",
       sheets: a.sheets || undefined,
-      text: a.type === "image" ? undefined : a.extracted,
+      text: a.type === "image" || a.sheets?.length ? undefined : a.extracted,
       alreadyPlaced: Array.from(
         editor.querySelectorAll("[data-material-id],[data-asset-id]"),
       ).some(
@@ -28072,7 +28154,7 @@ function localFinalReport() {
         ". " +
         s.label +
         " — " +
-        (s.id === 14
+        (s.id === 15
           ? "итоговый отчёт сформирован"
           : {
               done: state.steps[s.id]?.needsReview
@@ -28084,7 +28166,7 @@ function localFinalReport() {
     ).join("\n"),
     "РЕЗУЛЬТАТЫ И ОСТАВШИЕСЯ ВОПРОСЫ",
     Object.entries(state.results)
-      .filter(([id]) => id !== "14")
+      .filter(([id]) => id !== "15")
       .map(
         ([id, r]) =>
           "Шаг " + id + ": " + (r.comment || r.text || "нет результата"),
@@ -28095,7 +28177,7 @@ function localFinalReport() {
     "АВТОРСТВО И ВЕРСИИ",
     `Контрольных версий: ${state.history.length}. Событий в журнале: ${state.events.length}. Паспорт фиксирует изменения в этом браузере и не является AI-детектором.`,
     "КАК ПОЛУЧИТЬ КОМПЛЕКТ",
-    "Нажмите «Скачать» → «Финальный пакет ZIP»: работа DOCX, Markdown, отчёты, чек-лист, источники, паспорт и аудит. Материалы защиты находятся в отчёте шага 12, публикационный план — в шаге 13.",
+    "Нажмите «Скачать» → «Финальный пакет ZIP»: работа DOCX, Markdown, отчёты, чек-лист, источники, паспорт и аудит. Материалы защиты находятся в отчёте шага 13, публикационный план — в шаге 14.",
     "ПЕРЕД СДАЧЕЙ",
     "Проверьте факты, содержание ссылок, соответствие замечаниям руководителя и экспортированный DOCX в Word. Базовый аудит относится к исходному файлу; выполнение шагов не является официальным допуском.",
   ].join("\n\n");
@@ -28303,6 +28385,7 @@ function editableBlocks(step, all = documentPlan()) {
       b.node.tagName === "PRE"
     )
       return false;
+    if (step === 12 && /^H[1-6]$/.test(b.node.tagName)) return false;
     if (b.node.dataset.materialId && /^H[1-6]$/.test(b.node.tagName))
       return false;
     if (b.node.dataset.materialId && step !== 10) return false;
@@ -28314,7 +28397,7 @@ function editableBlocks(step, all = documentPlan()) {
 }
 function buildAIChunks(step) {
   let target = editableBlocks(step);
-  if ($("scope").value === "selection" && selectedIDs.length)
+  if (step !== 12 && $("scope").value === "selection" && selectedIDs.length)
     target = target.filter((b) => selectedIDs.includes(b.id));
   if (!target.length) target = editableBlocks(step);
   if (
@@ -28486,7 +28569,17 @@ function normaliseBibliography() {
     const start = Number(b.node.start) || 1;
     const paragraphs = Array.from(b.node.children).map((li, i) => {
       const p = document.createElement("p");
-      p.innerHTML = li.innerHTML;
+      const fragments = Array.from(li.children);
+      if (fragments.some((n) => /^(?:P|DIV|SECTION)$/.test(n.tagName))) {
+        const holder = document.createElement("div");
+        holder.innerHTML = li.innerHTML;
+        holder
+          .querySelectorAll("p,div,section")
+          .forEach((n) =>
+            n.replaceWith(...n.childNodes, document.createTextNode(" ")),
+          );
+        p.innerHTML = holder.innerHTML;
+      } else p.innerHTML = li.innerHTML;
       p.prepend(document.createTextNode(start + i + ". "));
       p.dataset.sourceNumber = start + i;
       return p;
@@ -28560,6 +28653,12 @@ async function applyMaterialPlan(plan, job) {
       );
       continue;
     }
+    const chosenCaption = anchoredMaterialCaption(material, placement.caption);
+    if (chosenCaption !== placement.caption && placement.caption)
+      warnings.push(
+        "Подпись с неуказанным периодом заменена исходным названием материала.",
+      );
+    placement.caption = chosenCaption;
     const nodes = [];
     if (material.type === "image") {
       const stored = material.data ? material : await assetGet(material.id);
@@ -28848,7 +28947,11 @@ async function prepareAIStage(job, signal) {
     try {
       const input = await fitAIInput(
         {
-          context: job.overview,
+          context:
+            job.overview +
+            (attempt
+              ? "\nПредыдущий ответ не содержал читаемого плана. Верни только JSON по схеме системы, без комментариев снаружи, с точными b1/b2 из work."
+              : ""),
           materials,
           sources: job.sources || "",
           profile: job.profile,
@@ -28858,12 +28961,22 @@ async function prepareAIStage(job, signal) {
         signal,
       );
       result = await apiRequest(
-        { action: "plan", step: job.step, model: job.model, ...input },
+        {
+          action: "plan",
+          step: job.step,
+          model: job.model,
+          ...input,
+          ...(job.step === 3 ? { materialManifest: materialManifest() } : {}),
+        },
         signal,
       );
       break;
     } catch (e) {
-      if (e.code !== "PLAN_FORMAT" || attempt) throw e;
+      if (
+        !["PLAN_FORMAT", "EMPTY_RESULT", "TRUNCATED"].includes(e.code) ||
+        attempt
+      )
+        throw e;
     }
   }
   if (job.step === 4 && referenceMap().length > 40) {
@@ -28920,6 +29033,7 @@ async function prepareAIStage(job, signal) {
       const retry = await apiRequest(
         {
           action: "plan",
+          materialManifest: materialManifest(),
           step: 3,
           model: job.model,
           context:
@@ -29175,6 +29289,7 @@ async function applyStep() {
     toast("Добавьте замечания научного руководителя.", "error");
     return;
   }
+  applyQuotaAvailability();
   const selected = $("modelSelect").selectedOptions[0];
   if (selected?.disabled) {
     toast(
@@ -29186,7 +29301,7 @@ async function applyStep() {
   const originalHTML = cleanHTML(editor.innerHTML);
   const beforeVersion = snapshot("До шага " + step.id + " · " + step.label);
   if ([4, 6, 10].includes(step.id)) normaliseBibliography();
-  splitLongLists(step.id);
+  if (step.id !== 12) splitLongLists(step.id);
   let chunks;
   try {
     chunks = step.edit
@@ -29211,7 +29326,7 @@ async function applyStep() {
   state.job = {
     originalHTML,
     beforeVersion,
-    protocol: "ai-2.6",
+    protocol: "ai-2.7",
     id: uid(),
     step: step.id,
     model: $("modelSelect").value,
@@ -29486,10 +29601,39 @@ function longSentences(text) {
     .map(proseKey)
     .filter((v) => v.length >= 100);
 }
+function isBibliographicStub(text) {
+  const raw = String(text).trim(),
+    key = proseKey(raw.replace(/^\s*\d+[.)]\s*/, ""));
+  const quoted = raw.match(
+    /^[^\n«»"]{3,180}\.\s*[«"]([^»"]{15,})[»"]\.?$/u,
+  )?.[1];
+  return referenceMap().some((r) => {
+    const record = proseKey(r.text);
+    return (
+      (key.length > 45 && key === record) ||
+      Boolean(quoted && record.includes(proseKey(quoted)))
+    );
+  });
+}
+function editorialResidue(text) {
+  return /(?:^|[.!?]\s+)(?:добавлен[аоы]?|вставлен[аоы]?|исправлен[аоы]?|уточнен[аоы]?|уточнён[аоы]?)\s+(?:ссылк|абзац|формулировк|данные|заголов|упоминани)|(?:для повышения [^.!?]{0,100})?добавлены ссылки|(?:рекомендуется|рекомендуем) ознакомиться|изменены на\s*:/iu.test(
+    String(text),
+  );
+}
 function qualityProblem(text, old, node, step, reference = false) {
   const fresh = proseKey(text),
     own = proseKey(old);
+  if (!reference && editorialResidue(text) && !editorialResidue(old))
+    return "Служебные объяснения правок и рекомендации читателю оставь в comment; в работе нужна аргументация";
+  if (
+    !reference &&
+    /(?:^|[.!?]\s+)(?:Ссылки? на источники|Изменены на)\s*:/iu.test(text) &&
+    !/(?:Ссылки? на источники|Изменены на)\s*:/iu.test(old)
+  )
+    return "Ссылки помещаются у научного утверждения, не отдельным списком или описанием замены";
   if (!fresh) return "Пустая правка";
+  if (!reference && isBibliographicStub(text) && !isBibliographicStub(old))
+    return "Название публикации без научного утверждения относится к библиографии, не к интеграции в текст";
   if (
     !reference &&
     !own.includes("здесь будут") &&
@@ -29580,6 +29724,8 @@ function qualityProblem(text, old, node, step, reference = false) {
       )
         return "Таблица скопирована в обычный текст; исходные ячейки уже есть в документе";
     }
+    if (fresh.length >= 70 && otherKey.includes(fresh) && !own.includes(fresh))
+      return "Новый абзац дословно повторяет часть уже существующего абзаца";
     if (otherKey.length >= 45 && fresh === otherKey && own !== otherKey)
       return "Точный повтор другого блока";
     if (
@@ -29700,7 +29846,205 @@ function duplicateOfDocument(text, except) {
       signature(blockMD(n)) === candidate,
   );
 }
+function finalValueSequence(text) {
+  return (
+    String(text)
+      .replace(/\\([\[\]])/g, "$1")
+      .replace(/\[[^\]]*\]\(https?:\/\/[^\s)]+\)/g, "")
+      .replace(/https?:\/\/[^\s)\]]+/g, "")
+      .replace(/10\.\d{4,9}\/\S+/g, "")
+      .replace(/\[[\d\s,;–—-]+\]/g, "")
+      .match(
+        /[+−-]?\d+(?:[.,]\d+)?(?:\s*(?:[%‰]|[\p{L}µμ°]+(?:\/[\p{L}]+)?))?/gu,
+      ) || []
+  );
+}
+function preserveInlineText(node, freshText) {
+  const old = node.textContent;
+  if (old === freshText) return false;
+  const parts = Diff.diffChars(old, freshText, {
+    timeout: 500,
+    maxEditLength: 7000,
+  });
+  if (!parts) return false;
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT),
+    leaves = [];
+  let total = 0;
+  while (walker.nextNode()) {
+    const n = walker.currentNode;
+    leaves.push({ node: n, start: total, end: total + n.length });
+    total += n.length;
+  }
+  if (!leaves.length) return false;
+  const edits = [];
+  let pos = 0;
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.removed) {
+      let added = "";
+      if (parts[i + 1]?.added) added = parts[++i].value;
+      edits.push({ start: pos, end: pos + part.value.length, text: added });
+      pos += part.value.length;
+    } else if (part.added)
+      edits.push({ start: pos, end: pos, text: part.value });
+    else pos += part.value.length;
+  }
+  for (const edit of edits.reverse()) {
+    const first = leaves.find((v) => edit.start < v.end) || leaves.at(-1);
+    const offset = Math.max(
+      0,
+      Math.min(first.node.length, edit.start - first.start),
+    );
+    for (const leaf of leaves) {
+      const from = Math.max(edit.start, leaf.start),
+        to = Math.min(edit.end, leaf.end);
+      if (to > from) leaf.node.deleteData(from - leaf.start, to - from);
+    }
+    first.node.insertData(offset, edit.text);
+  }
+  return node.textContent === freshText;
+}
+function applyFinalPatches(chunk, result) {
+  const allowed = new Set(chunk.ids),
+    operations = [],
+    before = [],
+    after = [],
+    ids = [];
+  const warn = (m) => noteFilteredResult(result, m);
+  const map = new Map(
+    documentPlan()
+      .filter((b) => allowed.has(b.id))
+      .map((b) => [b.id, b]),
+  );
+  for (const change of result.patches.changes || []) {
+    const b = map.get(change.id);
+    if (
+      !b ||
+      b.role === "references" ||
+      /^H[1-6]$/.test(b.node.tagName) ||
+      b.node.dataset.materialId ||
+      b.node.querySelector("img,table") ||
+      ["TABLE", "PRE"].includes(b.node.tagName)
+    ) {
+      warn("Финальная вычитка сохраняет структуру, материалы и библиографию.");
+      continue;
+    }
+    const box = document.createElement("div");
+    box.innerHTML = markdownHTML(bodyCitations(change.text));
+    const fresh = box.firstElementChild;
+    if (
+      box.children.length !== 1 ||
+      fresh.tagName !== b.node.tagName ||
+      box.querySelector("table,img,h1,h2,h3,h4,h5,h6") ||
+      b.node.querySelectorAll("li").length !==
+        fresh.querySelectorAll("li").length
+    ) {
+      warn("Косметическая правка не может менять тип или число блоков.");
+      continue;
+    }
+    const text = fresh.textContent,
+      old = b.node.textContent;
+    if (text === old) continue;
+    if (
+      JSON.stringify(finalValueSequence(old)) !==
+      JSON.stringify(finalValueSequence(text))
+    ) {
+      warn(
+        "Числа, даты, единицы и их порядок сохранены; числовая правка не применена.",
+      );
+      continue;
+    }
+    const problem = qualityProblem(text, old, b.node, 12);
+    if (problem || text.length > old.length * 1.35 + 100) {
+      warn(problem || "Финальная вычитка не расширяет исследование.");
+      continue;
+    }
+    const copy = b.node.cloneNode(true),
+      prior = packHTML(b.node.outerHTML);
+    const copyItems = [...copy.querySelectorAll("li")],
+      freshItems = [...fresh.querySelectorAll("li")];
+    const inlineOK = copyItems.length
+      ? copyItems.every(
+          (li, i) =>
+            li.textContent === freshItems[i].textContent ||
+            preserveInlineText(li, freshItems[i].textContent),
+        )
+      : preserveInlineText(copy, text);
+    if (!inlineOK || copy.textContent !== text) {
+      warn("Не удалось сохранить исходные выделения; фрагмент оставлен.");
+      continue;
+    }
+    b.node.replaceChildren(...copy.childNodes);
+    b.node.classList.add("changed");
+    operations.push({
+      type: "replace",
+      id: b.id,
+      beforeHTML: prior,
+      afterHTML: packHTML(b.node.outerHTML),
+      reason: change.reason || "Финальная вычитка",
+    });
+    before.push(old);
+    after.push(text);
+    ids.push(b.id);
+  }
+  for (const id of result.patches.deletions || []) {
+    const b = map.get(id);
+    if (
+      !b ||
+      b.node.tagName !== "P" ||
+      b.role === "references" ||
+      b.node.dataset.materialId ||
+      b.node.querySelector("img,table")
+    ) {
+      warn("Структурный блок не удалён.");
+      continue;
+    }
+    const text = b.node.textContent,
+      stub =
+        /^\s*(?:ссылки? на источники\s*:\s*)?(?:\[[\d,;\s–—-]+\][.,]?\s*)+$/iu.test(
+          text,
+        ),
+      duplicate = Array.from(editor.children).some(
+        (n) =>
+          n !== b.node &&
+          n.tagName === "P" &&
+          proseKey(n.textContent) === proseKey(text),
+      );
+    if (
+      (!duplicate &&
+        !(stub || editorialResidue(text) || isBibliographicStub(text))) ||
+      (!duplicate &&
+        finalValueSequence(text).length &&
+        !isBibliographicStub(text))
+    ) {
+      warn(
+        "Удаление содержательного абзаца не относится к косметической вычитке.",
+      );
+      continue;
+    }
+    operations.push({
+      type: "delete",
+      id,
+      beforeHTML: packHTML(b.node.outerHTML),
+      reason: "Удалён служебный абзац или точный повтор",
+    });
+    before.push(text);
+    ids.push(id);
+    b.node.remove();
+  }
+  if (result.patches.insertions?.length)
+    warn("Новые блоки на финальной вычитке не добавляются.");
+  return {
+    changed: operations.length,
+    operations,
+    before: before.join("\n\n"),
+    after: after.join("\n\n"),
+    blockIDs: ids,
+  };
+}
 function applyScopedPatches(chunk, result) {
+  if ((state.job?.step || state.selected) === 12)
+    return applyFinalPatches(chunk, result);
   const step = state.job?.step || state.selected,
     plan = documentPlan();
   const allowed = new Set(chunk.ids),
@@ -29799,7 +30143,7 @@ function applyScopedPatches(chunk, result) {
       warn("Изображение размещается только планом по исходному файлу");
       return null;
     }
-    if (box.querySelector("table") && !(insertion && [2, 3].includes(step))) {
+    if (box.querySelector("table") && !(insertion && step === 2)) {
       warn("Повторная таблица не применена");
       return null;
     }
@@ -30085,7 +30429,7 @@ function tokenCount(usage) {
 async function runJob() {
   const job = state.job;
   if (!job || running) return;
-  if (job.protocol !== "ai-2.6") {
+  if (job.protocol !== "ai-2.7") {
     state.selected = job.step;
     state.job = null;
     if ([2, 10].includes(job.step) && !state.requirements[job.step]?.text)
@@ -30121,7 +30465,7 @@ async function runJob() {
       if (job.step === 10)
         context =
           JSON.stringify({ docxAudit: state.docxAudit }) + "\n" + context;
-      if (job.step === 11 || job.step === 14)
+      if (job.step === 11 || job.step === 15)
         context =
           JSON.stringify({
             journal: state.events.slice(-25).map((e) => ({
@@ -30182,7 +30526,13 @@ async function runJob() {
       } catch (e) {
         if (
           !controller.signal.aborted &&
-          ["TRUNCATED", "PATCH_FORMAT", "PATCH_ID"].includes(e.code) &&
+          [
+            "TRUNCATED",
+            "PATCH_FORMAT",
+            "PATCH_ID",
+            "EMPTY_RESULT",
+            "EMPTY_TEXT",
+          ].includes(e.code) &&
           c.blocks?.length > 1 &&
           (c.recoveryDepth || 0) < 2 &&
           (job.recoveries || 0) < 4
@@ -30390,12 +30740,16 @@ async function runJob() {
       ];
       const reviewComments = job.comments.filter((c) => c.needsReview);
       output = realChange
-        ? "Изменения применены к документу. Обработано фрагментов: " +
+        ? (total
+            ? "Изменения применены к документу. Обработано фрагментов: "
+            : "Обновлено представление документа; содержательных AI-правок нет. Обработано фрагментов: ") +
           job.chunks.length +
           "; применено операций: " +
           total +
           ". Откройте «Посмотреть различия», чтобы увидеть результат всего этапа."
-        : "Документ не изменён: модель не предложила применимых правок. Новая версия не создана; этап можно повторить с уточнёнными требованиями.";
+        : reviewComments.length
+          ? "Часть проверки не завершена: применимых правок не получено. Текст сохранён; замечания перечислены ниже."
+          : "Проверка выполнена: применимых изменений не потребовалось. Текст сохранён.";
       const plans = job.comments.filter((c) => c.changed).map((c) => c.comment);
       if (job.step === 4 && !total)
         output =
@@ -30415,7 +30769,7 @@ async function runJob() {
       state.results[job.step] = {
         changed: realChange,
         needsReview: Boolean(
-          job.materialFallbackCount || reviewComments.length || !realChange,
+          job.materialFallbackCount || reviewComments.length,
         ),
         comment: output,
         text: "",
@@ -30959,6 +31313,12 @@ function passport() {
   return {
     product: "ВКР-Контур",
     version: 2,
+    applicationVersion: "2.7.0",
+    pipelineVersion: 3,
+    legacyEventCount: state.legacyEventCount || 0,
+    legacyStepMap: state.legacyEventCount
+      ? { 12: 13, 13: 14, 14: 15 }
+      : undefined,
     exportedAt: new Date().toISOString(),
     scope:
       "Локальная история в этом браузере. Не доказательство авторства, не AI-детектор и не нотариальная фиксация.",
@@ -31112,7 +31472,7 @@ async function restoreBackup(file) {
     if (running) throw new Error("Сначала остановите обработку.");
     if (!file || file.size > 40 * 1024 * 1024)
       throw new Error("Резервная копия должна быть не больше 40 МБ.");
-    const b = JSON.parse(await file.text());
+    const b = migratePipeline(JSON.parse(await file.text()));
     if (
       b.version !== 2 ||
       typeof b.html !== "string" ||
@@ -31166,7 +31526,7 @@ async function restoreBackup(file) {
       legacyAssets: false,
       materials: safeMaterials,
       job: null,
-      selected: Math.min(14, Math.max(1, Number(b.selected) || 1)),
+      selected: Math.min(15, Math.max(1, Number(b.selected) || 1)),
     };
     delete state.assets;
     delete state.snapshots;
@@ -31641,6 +32001,21 @@ async function finalPackage() {
   download(await zip.generateAsync({ type: "blob" }), "vkr-final-package.zip");
   toast("Финальный пакет скачан", "success");
 }
+function migratePipeline(saved) {
+  if (!saved || saved.pipelineVersion >= 3) return saved;
+  for (const field of ["steps", "results"]) {
+    const out = {};
+    for (const [id, value] of Object.entries(saved[field] || {}))
+      out[Number(id) >= 12 ? Number(id) + 1 : id] = value;
+    saved[field] = out;
+  }
+  if (saved.selected >= 12) saved.selected++;
+  if (saved.job?.step >= 12) saved.job.step++;
+  saved.legacyPipelineEvents = true;
+  saved.legacyEventCount = saved.events?.length || 0;
+  saved.pipelineVersion = 3;
+  return saved;
+}
 function hydrateProfile() {
   for (const key of ["topic", "program", "deadline"])
     $(key).value = state.profile?.[key] || "";
@@ -31667,7 +32042,7 @@ async function init() {
       STORAGE = "vkr-project:" + active;
     const saved = localStorage.getItem(STORAGE);
     if (saved) {
-      const b = JSON.parse(saved);
+      const b = migratePipeline(JSON.parse(saved));
       if (b.version === 2 && typeof b.html === "string") {
         state = { ...state, ...b };
         if (STORAGE === LEGACY_STORAGE) state.legacyAssets = true;
@@ -31864,6 +32239,26 @@ async function init() {
   $("applyBtn").onclick = applyStep;
   $("cancelBtn").onclick = () => controller?.abort();
   $("resumeBtn").onclick = () => {
+    applyQuotaAvailability();
+    const option = $("modelSelect").selectedOptions[0];
+    if (option?.disabled) {
+      toast(option.title || "Выберите доступную модель.", "error");
+      return;
+    }
+    if (state.job && option?.value !== state.job.model) {
+      if (
+        !option.value.startsWith("yandexgpt") &&
+        !$("consentCheckbox").checked
+      ) {
+        toast(
+          "Подтвердите отправку фрагментов выбранному провайдеру.",
+          "error",
+        );
+        return;
+      }
+      state.job.model = option.value;
+      state.job.foreignConsent = $("consentCheckbox").checked;
+    }
     if (
       !state.job?.model.startsWith("yandexgpt") &&
       !state.job?.foreignConsent
