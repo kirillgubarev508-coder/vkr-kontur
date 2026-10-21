@@ -2,7 +2,7 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="application-version" content="2.8.1" />
+    <meta name="application-version" content="2.8.2" />
     <meta http-equiv="Content-Security-Policy" content="connect-src 'self' https://d5d37c8mt9t2v19cbku9.g2n58e0c.apigw.yandexcloud.net; img-src data: blob:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none';">
 <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="theme-color" content="#4f46e5" />
@@ -25815,6 +25815,66 @@ var __async = (__this, __arguments, generator) => {
       add(m[0], "SECRET");
     return found;
   }
+  function tokens(text) {
+    return (
+      String(text ?? "")
+        .normalize("NFKC")
+        .replace(/\p{Cf}/gu, "")
+        .toLocaleLowerCase("ru")
+        .replace(/ё/g, "е")
+        .match(/\p{L}+|\p{N}+/gu) || []
+    );
+  }
+  function nearWord(a, b) {
+    if (a === b) return true;
+    // Fuzzy matching only decides withholding. Numeric tokens and short IDs stay exact.
+    if (
+      !/^[\p{L}]{6,}$/u.test(a) ||
+      !/^[\p{L}]{6,}$/u.test(b) ||
+      Math.abs(a.length - b.length) > 1
+    )
+      return false;
+    let i = 0,
+      j = 0,
+      edits = 0;
+    while (i < a.length && j < b.length) {
+      if (a[i] === b[j]) {
+        i++;
+        j++;
+        continue;
+      }
+      if (++edits > 1) return false;
+      if (a.length > b.length) i++;
+      else if (b.length > a.length) j++;
+      else {
+        i++;
+        j++;
+      }
+    }
+    return edits + (a.length - i) + (b.length - j) <= 1;
+  }
+  function matchesPrivate(text, rules) {
+    if (!rules?.length) return false;
+    const hay = tokens(text);
+    for (const rule of rules) {
+      const needle = tokens(rule);
+      if (!needle.length || needle.length > hay.length) continue;
+      for (let i = 0; i <= hay.length - needle.length; i++) {
+        let differences = 0,
+          valid = true;
+        for (let j = 0; j < needle.length; j++)
+          if (hay[i + j] !== needle[j]) {
+            if (++differences > 1 || !nearWord(hay[i + j], needle[j])) {
+              valid = false;
+              break;
+            }
+          }
+        if (valid) return true;
+      }
+    }
+    return false;
+  }
+
   function ensure(vault, value, kind, random) {
     const old = vault.find((e) => e.value === value);
     if (old) return old;
@@ -25917,6 +25977,8 @@ var __async = (__this, __arguments, generator) => {
   }
   return {
     discover,
+    tokens,
+    matchesPrivate,
     ensure,
     maskText,
     restoreText,
@@ -26967,6 +27029,33 @@ function showFeedback(step, text, error = false) {
     "badge " +
     (error ? "red" : needsReview ? "review" : step.edit ? "green" : "");
   $("feedbackContent").textContent = text;
+  let agentInfo = $("sourceAgentInfo");
+  if (!agentInfo) {
+    agentInfo = document.createElement("p");
+    agentInfo.id = "sourceAgentInfo";
+    agentInfo.className = "micro";
+    agentInfo.style.overflowWrap = "anywhere";
+    $("feedbackContent").after(agentInfo);
+  }
+  agentInfo.hidden = step.id !== 4;
+  if (step.id === 4) {
+    const a =
+      state.job?.step === 4 ? state.job.plan?.agent : state.sourceReview?.agent;
+    const runs = a?.batches || (a ? [a] : []);
+    const ids = runs.map((r) => r.responseId).filter(Boolean);
+    agentInfo.textContent = error
+      ? "Этап не завершён: успешный вызов агента в этом запуске не подтверждён."
+      : !a?.batches?.length && !state.sourceReview?.decisions?.length
+        ? "Доступных источников нет; агент не запускался."
+        : a?.used
+          ? "Исполнитель: агент vkr-final-review-pilot · YandexGPT Lite · пакетов: " +
+            runs.length +
+            " · дополнительных интернет-проверок: " +
+            runs.reduce((n, r) => n + (r.lookups || 0), 0) +
+            (ids.length ? " · ответ API: " + ids.at(-1) : "")
+          : "Нет подтверждения вызова агента для этого результата. Перезапустите этап 4 после обновления HTML и функции.";
+  }
+
   $("diffBtn").hidden =
     error ||
     !step.edit ||
@@ -27126,15 +27215,67 @@ function privacyRandom() {
     v.toString(16).padStart(2, "0"),
   ).join("");
 }
+function privateRules() {
+  const p = privacyState();
+  return Array.isArray(p.manualRules)
+    ? p.manualRules.filter((v) => typeof v === "string" && v.trim())
+    : p.entities
+        .filter((e) => e.kind === "PRIVATE" && !e.wireVariant)
+        .map((e) => e.value);
+}
+function privacyMatch(value, rules = privateRules()) {
+  return VKRPrivacy.matchesPrivate(value, rules);
+}
+function privacyMaterialPrivate(a) {
+  return Boolean(a.private || privacyMatch(a.name || ""));
+}
+function privacySheets(a) {
+  return (a.sheets || []).map((sheet) => ({
+    ...sheet,
+    rows: (sheet.rows || []).map((row) =>
+      privacyMatch(row.map((v) => String(v ?? "")).join(" | "))
+        ? ["⟦Закрыто локально⟧"]
+        : row,
+    ),
+  }));
+}
+function privacyMatchCounts(rules) {
+  return {
+    blocks: blocks().filter(
+      (b) =>
+        privacyMatch(b.node.textContent, rules) || privacyMatch(b.text, rules),
+    ).length,
+    rows: state.materials.reduce(
+      (n, a) =>
+        n +
+        (a.sheets || []).reduce(
+          (m, s) =>
+            m +
+            (s.rows || []).filter((row) =>
+              privacyMatch(row.map((v) => String(v ?? "")).join(" | "), rules),
+            ).length,
+          0,
+        ),
+      0,
+    ),
+    files: state.materials.filter(
+      (a) =>
+        privacyMatch(a.name || "", rules) ||
+        privacyMatch(a.extracted || "", rules),
+    ).length,
+  };
+}
 function privacyExcluded(b) {
   if (!b) return false;
   const p = privacyState();
   return (
     p.blockedIDs.includes(b.id || b.node?.dataset.blockId) ||
+    privacyMatch(b.node?.textContent || b.text || "") ||
+    privacyMatch(b.text || "") ||
     Boolean(
       state.materials.some(
         (a) =>
-          a.private &&
+          privacyMaterialPrivate(a) &&
           (a.id === b.node?.dataset.materialId ||
             a.id === b.node?.dataset.assetId ||
             [
@@ -27170,17 +27311,41 @@ function privateWireText(text) {
   }
   const mask = (v) => {
     if (typeof v === "string")
-      return VKRPrivacy.maskText(v, p.entities, privacyRandom);
+      return privacyMatch(v)
+        ? "⟦Закрыто локально⟧"
+        : VKRPrivacy.maskText(v, p.entities, privacyRandom);
     if (typeof v === "number")
-      return (
-        p.entities.find((e) => e.kind === "IDENTIFIER" && e.value === String(v))
-          ?.marker || v
-      );
-    if (Array.isArray(v)) return v.map(mask);
-    if (v && typeof v === "object")
+      return privacyMatch(String(v))
+        ? "⟦Закрыто локально⟧"
+        : p.entities.find(
+            (e) => e.kind === "IDENTIFIER" && e.value === String(v),
+          )?.marker || v;
+    if (Array.isArray(v)) {
+      if (
+        v.every(
+          (x) =>
+            x === null || ["string", "number", "boolean"].includes(typeof x),
+        ) &&
+        privacyMatch(v.map((x) => String(x ?? "")).join(" | "))
+      )
+        return ["⟦Закрыто локально⟧"];
+      return v.map(mask);
+    }
+    if (v && typeof v === "object") {
+      // User JSON may contain secrets in property names. Withhold the container rather than
+      // rename scientific columns or leak keys; public application schema remains unchanged.
+      if (
+        Object.keys(v).some(
+          (k) =>
+            privacyMatch(k) ||
+            VKRPrivacy.maskText(k, p.entities, privacyRandom) !== k,
+        )
+      )
+        return "⟦Закрыто локально⟧";
       return Object.fromEntries(
         Object.entries(v).map(([k, val]) => [k, mask(val)]),
       );
+    }
     return v;
   };
   try {
@@ -27192,7 +27357,7 @@ function privateWireText(text) {
 }
 function discoverMaterialContacts() {
   const p = privacyState();
-  for (const a of state.materials.filter((a) => !a.private))
+  for (const a of state.materials.filter((a) => !privacyMaterialPrivate(a)))
     for (const sheet of a.sheets || []) {
       const head = sheet.rows?.[0] || [];
       head.forEach((label, column) => {
@@ -27251,7 +27416,7 @@ async function preparePrivateRequest(raw) {
   if (body.action === "plan" && body.step === 4) {
     body.model = "yandexgpt-5-lite";
     body.sourceAgentProtocol = 1;
-    body.sourceAgentRevision = "2.8.1-aacrhu7ck4er4221dmqt";
+    body.sourceAgentRevision = "2.8.2-required-aacrhu7ck4er4221dmqt";
     if (!p.sourceLookupApproved) {
       if (
         !confirm(
@@ -27312,7 +27477,7 @@ async function preparePrivateRequest(raw) {
   }
   if (body.action === "search") {
     const safe = privateWireText(body.query || "");
-    if (VKRPrivacy.markers(safe).length)
+    if (VKRPrivacy.markers(safe).length || safe.includes("⟦Закрыто"))
       throw Object.assign(
         new Error(
           "Поисковый запрос содержит защищённые данные. Укажите публичные ключевые слова в «Защите данных».",
@@ -27416,16 +27581,38 @@ function showPrivacy() {
   box.append(intro);
   const label = document.createElement("label");
   label.textContent =
-    "Дополнительно скрыть точные имена, контакты или фразы — по одному на строку";
+    "Не отправлять найденные строки и блоки — слова, ID или строка CSV; по одному правилу на строку";
   label.className = "field";
   const manual = document.createElement("textarea");
   manual.rows = 3;
   manual.id = "privacyEntities";
-  manual.value = p.entities
-    .filter((e) => e.kind === "PRIVATE" && !e.wireVariant)
-    .map((e) => e.value)
-    .join("\n");
+  manual.value = privateRules().join("\n");
   box.append(label, manual);
+  const matches = document.createElement("p");
+  matches.id = "privacyMatches";
+  matches.className = "micro";
+  const preview = () => {
+    const rules = manual.value
+        .split("\n")
+        .map((v) => v.trim())
+        .filter(Boolean),
+      c = privacyMatchCounts(rules);
+    matches.textContent =
+      "Найдено локально: блоков " +
+      c.blocks +
+      ", строк таблиц " +
+      c.rows +
+      ", материалов " +
+      c.files +
+      ". Учитываются регистр, пробелы, разделители CSV и одна опечатка в длинном слове; числовые ID совпадают точно. Совпавшие строки/блоки не отправляются, оригиналы остаются в документе.";
+  };
+  let previewTimer;
+  manual.oninput = () => {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(preview, 180);
+  };
+  preview();
+  box.append(matches);
   const searchLabel = document.createElement("label");
   searchLabel.className = "field";
   searchLabel.textContent = "Публичные ключевые слова для поиска источников";
@@ -27489,18 +27676,12 @@ function showPrivacy() {
       .split("\n")
       .map((v) => v.trim())
       .filter(Boolean);
-    if (values.some((v) => v.length < 3 || /^\d[\d\s.,%-]*$/.test(v))) {
-      toast(
-        "Отдельные научные числа не маскируются. Закройте блок или материал целиком.",
-        "error",
-      );
-      return;
-    }
-    p.entities = p.entities.filter(
-      (e) => e.kind !== "PRIVATE" || values.includes(e.value),
-    );
-    for (const value of values)
-      VKRPrivacy.ensure(p.entities, value, "PRIVATE", privacyRandom);
+    p.manualRules = [...new Set(values)];
+    p.entities = p.entities.filter((e) => e.kind !== "PRIVATE");
+    // Manual rules withhold containers; they do not replace scientific values with synthetic tokens.
+    p.confirmedProviders = [];
+    p.sourceLookupApproved = false;
+    p.approvedSearch = "";
     p.blockedIDs = selections
       .filter(([, c]) => c.checked && !c.disabled)
       .map(([id]) => id);
@@ -27523,7 +27704,7 @@ function showPrivacy() {
   showModal("Защита данных", box);
 }
 async function purgePrivateResponseCache() {
-  if (privacyState().cacheVersion === 2) return;
+  if (privacyState().cacheVersion === 3) return;
   const d = await db();
   await new Promise((resolve, reject) => {
     const tx = d.transaction("assets", "readwrite"),
@@ -27540,7 +27721,7 @@ async function purgePrivateResponseCache() {
     tx.oncomplete = resolve;
     tx.onerror = () => reject(tx.error);
   });
-  privacyState().cacheVersion = 2;
+  privacyState().cacheVersion = 3;
 }
 
 async function apiRequest(body, signal) {
@@ -27557,7 +27738,8 @@ async function apiRequest(body, signal) {
       cached: true,
     };
   const cacheId =
-    "response:" + (await digest("pipeline-2.8\n" + apiEndpoint() + "\n" + key));
+    "response:" +
+    (await digest("pipeline-2.8.2\n" + apiEndpoint() + "\n" + key));
   const cacheTTL =
     body.sourceAgentProtocol === 1
       ? 300000
@@ -27721,11 +27903,11 @@ function toolRegion(kind) {
       ? /^(?:аннотация|abstract)(?:\s*[:.\-—–]|\s*$)/i.test(
           sectionTitle(b.text),
         )
-      : /^(?:список|перечень) сокращений\s*$/i.test(sectionTitle(b.text)),
+      : glossaryTitle(b.text),
   );
   if (start < 0) return [];
   const result = [all[start]];
-  if (!/^H[1-6]$/.test(all[start].node.tagName)) {
+  if (kind === "abstract" && !/^H[1-6]$/.test(all[start].node.tagName)) {
     if (kind === "abstract")
       for (
         let i = start + 1;
@@ -27741,30 +27923,211 @@ function toolRegion(kind) {
     if (kind === "abstract" && result.length > 4) break;
     if (
       kind === "glossary" &&
-      !/—|–|\s-\s|здесь (?:будут|будет)/i.test(all[i].text)
+      !(
+        all[i].node.dataset.tool === "glossary" ||
+        glossaryEntry(all[i].node.textContent) ||
+        (["OL", "UL"].includes(all[i].node.tagName) &&
+          [...all[i].node.children].every((n) =>
+            glossaryEntry(n.textContent),
+          )) ||
+        (all[i].node.tagName === "TABLE" &&
+          ([...all[i].node.rows].every(
+            (row) =>
+              row.cells.length >= 2 &&
+              /^[\p{L}][\p{L}\p{N}.\/-]{1,24}$/u.test(
+                row.cells[0].textContent.trim(),
+              ),
+          ) ||
+            /сокращ|термин|обозначен|abbreviat|term|acronym|symbol/i.test(
+              all[i].node.rows[0]?.textContent || "",
+            ))) ||
+        /здесь (?:будут|будет)/i.test(all[i].text)
+      )
     )
       break;
     result.push(all[i]);
   }
   return result;
 }
-function abbreviationCandidates() {
-  const text = publicAIBlocks()
-      .map((b) => b.text)
-      .join("\n\n"),
-    found = new Set(
-      text.match(
-        /(?<![\p{L}\p{N}])[А-ЯЁA-Z][А-ЯЁA-Z0-9]{1,10}(?:-[А-ЯЁA-Z0-9]{1,8})?(?![\p{L}\p{N}])/gu,
-      ) || [],
-    );
-  return [...found]
-    .filter(
-      (v) =>
-        v.length >= 2 &&
-        !/^(?:DOI|URL|HTTP|HTTPS|TXT|JSON|CSV|XLSX|PDF)$/.test(v),
-    )
-    .slice(0, 40);
+function glossaryTitle(text) {
+  return /^(?:(?:список|перечень)\s+)?(?:сокращени[яй]|условны[ех]\s+обозначени[яй]|обозначения\s+и\s+сокращения|условных\s+сокращений|abbreviations(?:\s+and\s+symbols)?|list\s+of\s+abbreviations)\s*$/iu.test(
+    sectionTitle(text),
+  );
 }
+function glossaryEntry(text) {
+  const m = String(text || "")
+    .trim()
+    .match(
+      /^([\p{L}][\p{L}\p{N}.\/-]{1,24})\s*(?:[—–]|\s-\s|:)\s*(\S[\s\S]*)$/u,
+    );
+  return m ? { term: m[1], definition: m[2].trim() } : null;
+}
+function glossaryTableRows(table) {
+  const rows = [...table.rows],
+    header = /сокращ|термин|обозначен|abbreviat|term|acronym|symbol/i.test(
+      rows[0]?.cells[0]?.textContent || "",
+    );
+  return { rows: rows.slice(header ? 1 : 0), header };
+}
+function glossaryEntries(region) {
+  const out = [];
+  for (const b of region.slice(1)) {
+    if (b.node.tagName === "TABLE")
+      for (const row of glossaryTableRows(b.node).rows) {
+        if (row.cells.length >= 2)
+          out.push({
+            term: row.cells[0].textContent.trim(),
+            definition: row.cells[1].textContent.trim(),
+          });
+      }
+    else if (["OL", "UL"].includes(b.node.tagName))
+      for (const li of b.node.children) {
+        const e = glossaryEntry(li.textContent);
+        if (e) out.push(e);
+      }
+    else {
+      const e = glossaryEntry(b.node.textContent);
+      if (e) out.push(e);
+    }
+  }
+  return out.filter(
+    (e) =>
+      e.term &&
+      e.definition &&
+      !/здесь (?:будут|будет)|расшифровка сокращения|placeholder/i.test(
+        e.definition,
+      ),
+  );
+}
+function abbreviationSourceBlocks() {
+  const excluded = new Set(
+    [...bibliographyBlocks(blocks()), ...toolRegion("glossary")].map(
+      (b) => b.id,
+    ),
+  );
+  return publicAIBlocks().filter(
+    (b) =>
+      !excluded.has(b.id) &&
+      !/^H[1-6]$/.test(b.node.tagName) &&
+      b.node.dataset.tool !== "glossary",
+  );
+}
+function abbreviationCandidates() {
+  const source = abbreviationSourceBlocks()
+    .map((b) => b.node.innerText || b.node.textContent)
+    .join("\n\n");
+  const found =
+    source.match(
+      /(?<![\p{L}\p{N}])[А-ЯЁA-Z][А-ЯЁA-Z0-9]{1,11}(?:-[А-ЯЁA-Z0-9]{1,8})?(?![\p{L}\p{N}])/gu,
+    ) || [];
+  return [...new Set(found)]
+    .filter((v) => !/(?:[-_]\d+$|\d{3,})/.test(v))
+    .slice(0, 80);
+}
+function abbreviationContext(terms) {
+  const source = abbreviationSourceBlocks()
+    .map((b) => b.node.innerText || b.node.textContent)
+    .join("\n\n");
+  return terms
+    .map((term) => {
+      const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        matches = [
+          ...source.matchAll(
+            new RegExp(
+              "(?<![\\p{L}\\p{N}])" + escaped + "(?![\\p{L}\\p{N}])",
+              "gu",
+            ),
+          ),
+        ].slice(0, 3);
+      return (
+        term +
+        ": " +
+        matches
+          .map((m) =>
+            source.slice(
+              Math.max(0, m.index - 180),
+              m.index + term.length + 220,
+            ),
+          )
+          .join(" … ")
+      );
+    })
+    .join("\n\n");
+}
+async function requestGlossary(request, signal) {
+  const entries = [],
+    warnings = [];
+  for (let i = 0; i < request.candidates.length; i += 15) {
+    const candidates = request.candidates.slice(i, i + 15);
+    $("assistStatus").textContent =
+      "Сокращения: пакет " +
+      (Math.floor(i / 15) + 1) +
+      " / " +
+      Math.ceil(request.candidates.length / 15) +
+      "…";
+    const result = await apiRequest(
+      {
+        ...request,
+        candidates,
+        text: abbreviationContext(candidates).slice(0, 18000),
+      },
+      signal,
+    );
+    entries.push(...(result.deliverable?.entries || []));
+    warnings.push(...(result.warnings || []));
+  }
+  return { deliverable: { entries }, warnings };
+}
+function glossaryNodes(entries, region) {
+  const heading =
+    region[0] && /^H[1-6]$/.test(region[0].node.tagName)
+      ? region[0].node.cloneNode(true)
+      : document.createElement("h2");
+  if (!heading.textContent) heading.textContent = "Список сокращений";
+  const table = region.find((b) => b.node.tagName === "TABLE");
+  if (table) {
+    const copy = table.node.cloneNode(true),
+      existingRows = glossaryTableRows(copy).rows,
+      template = existingRows[0]?.cloneNode(true),
+      body = copy.tBodies[0] || copy;
+    for (const row of existingRows) row.remove();
+    for (const entry of entries) {
+      const original = existingRows.find(
+        (row) => row.cells[0]?.textContent.trim() === entry.term,
+      );
+      const row = original
+        ? original.cloneNode(true)
+        : template
+          ? template.cloneNode(true)
+          : document.createElement("tr");
+      while (row.cells.length < 2) row.append(document.createElement("td"));
+      if (!original) for (const c of row.cells) c.textContent = "";
+      row.cells[0].textContent = entry.term;
+      row.cells[1].textContent = entry.definition;
+      body.append(row);
+    }
+    return [heading, copy];
+  }
+  const list = region.find((b) => ["OL", "UL"].includes(b.node.tagName));
+  if (list) {
+    const copy = list.node.cloneNode(false);
+    for (const entry of entries) {
+      const li = document.createElement("li");
+      li.textContent = entry.term + " — " + entry.definition;
+      copy.append(li);
+    }
+    return [heading, copy];
+  }
+  return [
+    heading,
+    ...entries.map((entry) => {
+      const p = document.createElement("p");
+      p.textContent = entry.term + " — " + entry.definition;
+      return p;
+    }),
+  ];
+}
+
 async function runDocumentTool(kind) {
   if (running || switching || state.job) {
     toast("Завершите или отмените текущий этап.", "info");
@@ -27790,6 +28153,13 @@ async function runDocumentTool(kind) {
       "В тексте не найдено сокращений для списка.";
     return;
   }
+  if (region.some(privacyExcluded)) {
+    toast(
+      "Существующий раздел содержит закрытые данные и сохранён без изменения.",
+      "info",
+    );
+    return;
+  }
   const before = cleanHTML(editor.innerHTML),
     job = {
       step: 0,
@@ -27798,16 +28168,7 @@ async function runDocumentTool(kind) {
     };
   let text = infoBrief(publicAIBlocks());
   if (kind === "glossary")
-    text = candidates
-      .map((term) => {
-        const source = publicAIBlocks()
-          .map((b) => b.text)
-          .join("\n\n");
-        const i = source.indexOf(term);
-        return term + ": " + source.slice(Math.max(0, i - 130), i + 200);
-      })
-      .join("\n")
-      .slice(0, 18000);
+    text = abbreviationContext(candidates).slice(0, 18000);
   const request = {
     action: "assist",
     tool: kind,
@@ -27829,7 +28190,7 @@ async function runDocumentTool(kind) {
       rejection = "";
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        result = await apiRequest(
+        result = await (kind === "glossary" ? requestGlossary : apiRequest)(
           {
             ...request,
             ...(attempt
@@ -27888,20 +28249,36 @@ async function runDocumentTool(kind) {
         ".";
       nodes.push(p, keywords);
     } else {
-      const entries = result.deliverable?.entries || [];
+      const generated = result.deliverable?.entries || [],
+        excluded = new Set(
+          [...region, ...bibliographyBlocks(blocks())].map((b) => b.id),
+        ),
+        body = blocks()
+          .filter((b) => !excluded.has(b.id))
+          .map((b) => b.node.textContent)
+          .join("\n");
+      const occurs = (term) =>
+        new RegExp(
+          "(?<![\\p{L}\\p{N}])" +
+            term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
+            "(?![\\p{L}\\p{N}])",
+          "u",
+        ).test(body);
+      const merged = new Map(
+        glossaryEntries(region)
+          .filter((e) => occurs(e.term))
+          .map((e) => [e.term, e]),
+      );
+      for (const entry of generated) merged.set(entry.term, entry);
+      const entries = [...merged.values()].sort((a, b) =>
+        a.term.localeCompare(b.term, "ru"),
+      );
       if (!entries.length) {
         $("assistStatus").textContent =
-          "Модель не нашла однозначных расшифровок; пустой раздел не добавлен.";
+          "Однозначные расшифровки не найдены; существующий текст сохранён, пустой раздел не добавлен.";
         return;
       }
-      const heading = document.createElement("h2");
-      heading.textContent = "Список сокращений";
-      nodes.push(heading);
-      for (const entry of entries) {
-        const p = document.createElement("p");
-        p.textContent = entry.term + " — " + entry.definition;
-        nodes.push(p);
-      }
+      nodes.push(...glossaryNodes(entries, region));
     }
     if (
       region.length &&
@@ -28551,21 +28928,23 @@ function materialManifest() {
   return JSON.stringify(
     state.materials.map((a) => ({
       id: a.id,
-      name: a.private ? "Закрытый материал" : a.name,
+      name: privacyMaterialPrivate(a) ? "Закрытый материал" : a.name,
       type: a.type,
-      description: a.private
+      description: privacyMaterialPrivate(a)
         ? a.publicDescription || "Закрытый материал"
         : a.caption || "",
-      sheets: (a.private ? [] : a.sheets || []).map((sheet) => ({
-        name: sheet.name,
-        columns: sheet.rows?.[0] || [],
-        rowCount: Math.max(0, (sheet.rows?.length || 0) - 1),
-      })),
+      sheets: (privacyMaterialPrivate(a) ? [] : a.sheets || []).map(
+        (sheet) => ({
+          name: sheet.name,
+          columns: sheet.rows?.[0] || [],
+          rowCount: Math.max(0, (sheet.rows?.length || 0) - 1),
+        }),
+      ),
     })),
   ).slice(0, 8000);
 }
 function anchoredMaterialCaption(material, proposed) {
-  if (material.private)
+  if (privacyMaterialPrivate(material))
     return String(
       proposed || material.publicDescription || "Закрытый материал",
     ).trim();
@@ -28586,16 +28965,28 @@ function materialsContext() {
     state.materials.map((a) => ({
       id: a.id,
       type: a.type,
-      name: a.private ? "Закрытый материал" : a.name,
-      caption: a.private
+      name: privacyMaterialPrivate(a) ? "Закрытый материал" : a.name,
+      caption: privacyMaterialPrivate(a)
         ? a.publicDescription ||
           "Содержание скрыто. Для размещения используйте только описание автора."
         : a.caption || "",
-      sheets: a.private ? undefined : a.sheets || undefined,
+      sheets: privacyMaterialPrivate(a)
+        ? undefined
+        : privacySheets(a) || undefined,
       text:
-        a.private || a.type === "image" || a.sheets?.length
+        privacyMaterialPrivate(a) || a.type === "image" || a.sheets?.length
           ? undefined
           : a.extracted,
+      withheldRows: (a.sheets || []).reduce(
+        (n, s) =>
+          n +
+          (s.rows || []).filter((row) =>
+            privacyMatch(row.map((v) => String(v ?? "")).join(" | ")),
+          ).length,
+        0,
+      ),
+      privacyNote:
+        "Закрытые строки не переданы; интерпретируй только видимые данные, не вычисляй и не восстанавливай скрытые значения. Служебное описание защиты относится только к comment.",
       alreadyPlaced: Array.from(
         editor.querySelectorAll("[data-material-id],[data-asset-id]"),
       ).some(
@@ -29338,16 +29729,70 @@ async function applyMaterialPlan(plan, job) {
       warnings.push("План содержит неизвестный материал; вставка пропущена.");
       continue;
     }
-    if (
-      Array.from(
-        editor.querySelectorAll("[data-material-id],[data-asset-id]"),
-      ).some(
-        (n) =>
-          n.dataset.materialId === material.id ||
-          n.dataset.assetId === material.id,
+    const placed = Array.from(editor.children).filter(
+      (n) =>
+        n.dataset.materialId === material.id ||
+        n.dataset.assetId === material.id ||
+        [...n.querySelectorAll("[data-asset-id]")].some(
+          (i) => i.dataset.assetId === material.id,
+        ),
+    );
+    if (placed.length) {
+      if (
+        placement.representation !== "appendix" ||
+        placed.some(
+          (n) =>
+            /^H[1-6]$/.test(n.tagName) && /^Приложение/i.test(n.textContent),
+        )
       )
-    )
+        continue;
+      const target = Array.from(editor.children).find(
+        (n) => n.dataset.blockId === (placement.afterId || placement.beforeId),
+      );
+      if (
+        !target ||
+        placed.includes(target) ||
+        documentPlan().some(
+          (b) =>
+            b.node === target &&
+            (b.role === "references" ||
+              b.role === "appendix" ||
+              privacyExcluded(b)),
+        )
+      ) {
+        warnings.push(
+          "Перенос материала требует подходящего открытого абзаца основной части.",
+        );
+        continue;
+      }
+      const heading = document.createElement("h2");
+      heading.textContent =
+        "Приложение · " + anchoredMaterialCaption(material, placement.caption);
+      heading.dataset.materialId = material.id;
+      heading.dataset.blockId = uid();
+      const link = document.createElement("p");
+      link.dataset.materialLink = material.id;
+      link.dataset.blockId = uid();
+      link.textContent =
+        "Полные материалы представлены в приложении «" +
+        anchoredMaterialCaption(material, placement.caption) +
+        "».";
+      if (placement.beforeId) target.before(link);
+      else target.after(link);
+      editor.querySelectorAll("[data-material-link]").forEach((n) => {
+        if (n !== link && n.dataset.materialLink === material.id) n.remove();
+      });
+      editor.append(heading, ...placed);
+      count++;
+      (job.materialPlacements ||= []).push({
+        id: material.id,
+        anchor: target.dataset.blockId,
+        representation: "appendix",
+        moved: true,
+        reason: placement.reason || "План размещения ИИ",
+      });
       continue;
+    }
     const anchor = Array.from(editor.children).find(
       (n) => n.dataset.blockId === (placement.afterId || placement.beforeId),
     );
@@ -29360,7 +29805,10 @@ async function applyMaterialPlan(plan, job) {
       continue;
     }
     if (
-      documentPlan().some((b) => b.node === anchor && b.role === "references")
+      documentPlan().some(
+        (b) =>
+          b.node === anchor && (b.role === "references" || privacyExcluded(b)),
+      )
     ) {
       warnings.push(
         "Материал должен размещаться у смыслового абзаца основной части, а не внутри списка источников.",
@@ -29429,6 +29877,12 @@ async function applyMaterialPlan(plan, job) {
       n.classList.add("changed");
     }
     const tail = tails.get(anchor) || anchor;
+    const placeholder = materialPlaceholder(anchor.textContent);
+    const replaceStub =
+      placeholder &&
+      VKRPrivacy.tokens(placeholder).join(" ") ===
+        VKRPrivacy.tokens(material.name).join(" ");
+
     if (placement.representation === "appendix" && material.type === "table") {
       const heading = document.createElement("h2");
       heading.textContent =
@@ -29445,11 +29899,17 @@ async function applyMaterialPlan(plan, job) {
         "Полные данные представлены в приложении «" +
         (placement.caption || material.name) +
         "».";
-      if (placement.beforeId) tail.before(link);
+      if (replaceStub) {
+        link.dataset.blockId = anchor.dataset.blockId;
+        tail.replaceWith(link);
+      } else if (placement.beforeId) tail.before(link);
       else tail.after(link);
       tails.set(anchor, link);
     } else {
-      if (placement.beforeId) tail.before(...nodes);
+      if (replaceStub) {
+        nodes[0].dataset.blockId = anchor.dataset.blockId;
+        tail.replaceWith(...nodes);
+      } else if (placement.beforeId) tail.before(...nodes);
       else tail.after(...nodes);
       tails.set(anchor, nodes.at(-1));
     }
@@ -29728,6 +30188,13 @@ async function reviewSourceBatches(job, signal) {
       },
       signal,
     );
+    if (review.agent?.used !== true)
+      throw Object.assign(
+        new Error(
+          "Сервер не подтвердил вызов агента на этапе 4. Обновите Cloud Function и проверьте prompt.id; прежняя модель не считается заменой агента.",
+        ),
+        { code: "AGENT_NOT_USED" },
+      );
     decisions.push(...review.plan.sourceDecisions);
     comments.push(review.comment || "");
     warnings.push(...(review.warnings || []));
@@ -30178,7 +30645,7 @@ async function applyStep() {
   state.job = {
     originalHTML,
     beforeVersion,
-    protocol: "ai-2.8",
+    protocol: "ai-2.8.2",
     id: uid(),
     step: step.id,
     model: $("modelSelect").value,
@@ -30473,6 +30940,9 @@ function editorialResidue(text) {
   );
 }
 function qualityProblem(text, old, node, step, reference = false) {
+  if (materialPlaceholder(text) && !materialPlaceholder(old))
+    return "Маркер файла не заменяет реальную таблицу или рисунок";
+
   const fresh = proseKey(text),
     own = proseKey(old);
   if (!reference && editorialResidue(text) && !editorialResidue(old))
@@ -30705,10 +31175,32 @@ function duplicateOfDocument(text, except) {
       signature(blockMD(n)) === candidate,
   );
 }
+function materialPlaceholder(text) {
+  const raw = String(text || "")
+    .trim()
+    .replace(/\\([\[\]])/g, "$1")
+    .replace(/^\*\*|\*\*$/g, "");
+  const m = raw.match(
+    /^\[(?:таблица|рисунок|иллюстрация|table|figure)\s+([^\]\n]{1,240}\.(?:csv|xlsx?|json|txt|png|jpe?g|webp|svg|pdf|docx))\]\s*[.]?$/iu,
+  );
+  return m ? m[1].trim() : null;
+}
+function materialLead(text) {
+  return /^(?:таблица|рисунок|иллюстрация)\s+для\s+[^\n\d]{2,160}:\s*$/iu.test(
+    String(text || "")
+      .trim()
+      .replace(/^\*\*|\*\*$/g, ""),
+  );
+}
+
 function finalValueSequence(text) {
   return (
     String(text)
       .replace(/\\([\[\]])/g, "$1")
+      .replace(
+        /\[(?:таблица|рисунок|иллюстрация|table|figure)\s+[^\]\n]{1,240}\.(?:csv|xlsx?|json|txt|png|jpe?g|webp|svg|pdf|docx)\]/giu,
+        "",
+      )
       .replace(/\[[^\]]*\]\(https?:\/\/[^\s)]+\)/g, "")
       .replace(/https?:\/\/[^\s)\]]+/g, "")
       .replace(/10\.\d{4,9}\/\S+/g, "")
@@ -30887,10 +31379,17 @@ function applyFinalPatches(chunk, result) {
       );
     if (
       (!duplicate &&
-        !(stub || editorialResidue(text) || isBibliographicStub(text))) ||
+        !(
+          stub ||
+          materialPlaceholder(text) ||
+          materialLead(text) ||
+          editorialResidue(text) ||
+          isBibliographicStub(text)
+        )) ||
       (!duplicate &&
         finalValueSequence(text).length &&
-        !isBibliographicStub(text))
+        !isBibliographicStub(text) &&
+        !materialPlaceholder(text))
     ) {
       warn(
         "Удаление содержательного абзаца не относится к косметической вычитке.",
@@ -31312,7 +31811,7 @@ function tokenCount(usage) {
 async function runJob() {
   const job = state.job;
   if (!job || running) return;
-  if (job.protocol !== "ai-2.8") {
+  if (job.protocol !== "ai-2.8.2") {
     state.selected = job.step;
     state.job = null;
     if ([2, 10].includes(job.step) && !state.requirements[job.step]?.text)
@@ -32141,8 +32640,31 @@ function showSources() {
     p = document.createElement("p");
   p.className = "small";
   p.textContent =
-    "Наличие DOI подтверждает метаданные, а не качество, соответствие теме или отсутствие всех отзывов. Источники без DOI проверяются вручную.";
+    "Наличие DOI подтверждает метаданные, а не качество, соответствие теме или отсутствие всех отзывов. Для источников без DOI агент может искать библиографические совпадения; отсутствие результата не доказывает вымысел.";
   box.append(p);
+  if (state.sourceReview) {
+    const a = state.sourceReview.agent,
+      info = document.createElement("p");
+    info.className = "small";
+    info.textContent = a?.used
+      ? "Последний анализ: агент vkr-final-review-pilot (" +
+        (state.sourceReview.date || "") +
+        ")."
+      : "Последний анализ не содержит подтверждения агентского вызова.";
+    box.append(info);
+    for (const d of state.sourceReview.decisions || []) {
+      const row = document.createElement("p");
+      row.className = "micro";
+      row.textContent =
+        "[" +
+        d.number +
+        "] " +
+        (d.action === "remove" ? "Исключён" : "Сохранён") +
+        ": " +
+        d.reason;
+      box.append(row);
+    }
+  }
   for (const source of state.sources) {
     const row = document.createElement("div");
     row.className = "source-item";
