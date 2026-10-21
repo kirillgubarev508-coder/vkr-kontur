@@ -2,7 +2,7 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="application-version" content="2.8.3" />
+    <meta name="application-version" content="2.8.4" />
     <meta http-equiv="Content-Security-Policy" content="connect-src 'self' https://d5d37c8mt9t2v19cbku9.g2n58e0c.apigw.yandexcloud.net; img-src data: blob:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none';">
 <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="theme-color" content="#4f46e5" />
@@ -27002,6 +27002,44 @@ function selectStep(id) {
   renderSteps();
   persist();
 }
+function sourceReviewRouteText(agent) {
+  if (!agent) return "Нет сведений об исполнителе анализа источников.";
+  const runs = agent.batches || (agent.completed ? [agent] : []);
+  if (!runs.length) return "Доступных источников нет; анализ не запускался.";
+  const native = runs.filter((r) => r.used === true),
+    fallback = runs.filter((r) => r.fallback === true && r.completed === true);
+  const text = [];
+  if (native.length) {
+    const saved = native.filter((r) => r.savedAgentUsed).length;
+    text.push(
+      "Агент Responses API · пакетов: " +
+        native.length +
+        (saved
+          ? " · сохранённых конфигураций: " + saved
+          : " · конфигурация приложения"),
+    );
+    const ids = native.map((r) => r.responseId).filter(Boolean);
+    if (ids.length) text.push("ответ API: " + ids.at(-1));
+    text.push(
+      "дополнительных проверок: " +
+        native.reduce((n, r) => n + (r.lookups || 0), 0),
+    );
+  }
+  if (fallback.length) {
+    text.push(
+      "Резервный анализ через YandexGPT Lite · пакетов: " + fallback.length,
+    );
+    text.push(
+      "причина перехода: " +
+        [...new Set(fallback.map((r) => r.reasonCode || "AGENT_ERROR"))].join(
+          ", ",
+        ),
+    );
+  }
+  if (!native.length && !fallback.length)
+    return "Сервер не подтвердил завершение анализа источников.";
+  return text.join(" · ");
+}
 function showFeedback(step, text, error = false) {
   feedbackText = text;
   $("feedback").hidden = false;
@@ -27037,19 +27075,9 @@ function showFeedback(step, text, error = false) {
   if (step.id === 4) {
     const a =
       state.job?.step === 4 ? state.job.plan?.agent : state.sourceReview?.agent;
-    const runs = a?.batches || (a ? [a] : []);
-    const ids = runs.map((r) => r.responseId).filter(Boolean);
     agentInfo.textContent = error
-      ? "Этап не завершён: успешный вызов агента в этом запуске не подтверждён."
-      : !a?.batches?.length && !state.sourceReview?.decisions?.length
-        ? "Доступных источников нет; агент не запускался."
-        : a?.used
-          ? "Исполнитель: агент vkr-final-review-pilot · YandexGPT Lite · пакетов: " +
-            runs.length +
-            " · дополнительных интернет-проверок: " +
-            runs.reduce((n, r) => n + (r.lookups || 0), 0) +
-            (ids.length ? " · ответ API: " + ids.at(-1) : "")
-          : "Нет подтверждения вызова агента для этого результата. Перезапустите этап 4 после обновления HTML и функции.";
+      ? "Этап не завершён; документ сохранён. Сведения об исполнителе будут показаны после успешного анализа."
+      : sourceReviewRouteText(a);
   }
 
   $("diffBtn").hidden =
@@ -27412,7 +27440,7 @@ async function preparePrivateRequest(raw) {
   if (body.action === "plan" && body.step === 4) {
     body.model = "yandexgpt-5-lite";
     body.sourceAgentProtocol = 1;
-    body.sourceAgentRevision = "2.8.3-required-aacrhu7ck4er4221dmqt";
+    body.sourceAgentRevision = "2.8.4-agent-or-legacy";
     if (!p.sourceLookupApproved) {
       if (
         !confirm(
@@ -27735,7 +27763,7 @@ async function apiRequest(body, signal) {
     };
   const cacheId =
     "response:" +
-    (await digest("pipeline-2.8.3\n" + apiEndpoint() + "\n" + key));
+    (await digest("pipeline-2.8.4\n" + apiEndpoint() + "\n" + key));
   const cacheTTL =
     body.sourceAgentProtocol === 1
       ? 300000
@@ -30225,7 +30253,7 @@ async function reviewSourceBatches(job, signal) {
     }
     progress(
       job,
-      "Агент проверяет библиографию: пакет " + (i + 1) + " / " + batches.length,
+      "Проверяем библиографию: пакет " + (i + 1) + " / " + batches.length,
     );
     const review = await apiRequest(
       {
@@ -30238,27 +30266,39 @@ async function reviewSourceBatches(job, signal) {
       },
       signal,
     );
-    if (review.agent?.used !== true)
+    const execution = review.agent || review.plan?.agent;
+    if (
+      !Array.isArray(review.plan?.sourceDecisions) ||
+      !(
+        execution?.used === true ||
+        (execution?.fallback === true && execution.completed === true)
+      )
+    )
       throw Object.assign(
         new Error(
-          "Сервер не подтвердил вызов агента на этапе 4. Обновите Cloud Function и проверьте prompt.id; прежняя модель не считается заменой агента.",
+          "Сервер не подтвердил завершение анализа источников. Обновите Cloud Function вместе с HTML.",
         ),
-        { code: "AGENT_NOT_USED" },
+        { code: "SOURCE_REVIEW_INCOMPLETE" },
       );
     decisions.push(...review.plan.sourceDecisions);
     comments.push(review.comment || "");
     warnings.push(...(review.warnings || []));
-    agents.push(review.agent || review.plan.agent || { used: false });
+    agents.push(execution);
     if (!review.cached) {
       const u = review.usage || {};
       for (const k of Object.keys(usage)) usage[k] += Number(u[k]) || 0;
     }
   }
-  const fallback = agents.some((a) => !a.used),
+  const fallback = agents.some((a) => a.fallback === true),
     agent = {
       name: "vkr-final-review-pilot",
-      used: agents.length > 0 && !fallback,
+      protocol: 2,
+      completed: true,
+      used: agents.length > 0 && agents.every((a) => a.used === true),
+      partiallyUsed: agents.some((a) => a.used === true),
       fallback,
+      agentBatches: agents.filter((a) => a.used === true).length,
+      fallbackBatches: agents.filter((a) => a.fallback === true).length,
       batches: agents,
     };
   return {
@@ -30278,7 +30318,7 @@ async function reviewSourceBatches(job, signal) {
         [...new Set(comments)].join(" ")
       : "Список литературы отсутствует; удалять нечего.",
     warnings: [...new Set(warnings)],
-    needsReview: warnings.length > 0 || fallback,
+    needsReview: warnings.length > 0,
   };
 }
 
@@ -32876,11 +32916,9 @@ function showSources() {
     const a = state.sourceReview.agent,
       info = document.createElement("p");
     info.className = "small";
-    info.textContent = a?.used
-      ? "Последний анализ: агент vkr-final-review-pilot (" +
-        (state.sourceReview.date || "") +
-        ")."
-      : "Последний анализ не содержит подтверждения агентского вызова.";
+    info.textContent =
+      sourceReviewRouteText(a) +
+      (state.sourceReview.date ? " · " + state.sourceReview.date : "");
     box.append(info);
     for (const d of state.sourceReview.decisions || []) {
       const row = document.createElement("p");
