@@ -2,7 +2,7 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="application-version" content="2.8.2" />
+    <meta name="application-version" content="2.8.3" />
     <meta http-equiv="Content-Security-Policy" content="connect-src 'self' https://d5d37c8mt9t2v19cbku9.g2n58e0c.apigw.yandexcloud.net; img-src data: blob:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none';">
 <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="theme-color" content="#4f46e5" />
@@ -26216,10 +26216,6 @@ function groupBlocks(blocks, max = 3600) {
   let current = [],
     len = 0;
   for (const block of blocks) {
-    if (block.text.length > 6500)
-      throw new Error(
-        "Один абзац или таблица превышает 6500 символов. Разделите его на меньшие части.",
-      );
     if (block.text.length > max) {
       if (current.length) {
         chunks.push(current);
@@ -26251,7 +26247,7 @@ function protectResult(oldText, newText, formatted = true) {
     throw new Error("Модель вернула пустой фрагмент. Исходный текст сохранён.");
   if (oldText.length > 250 && newText.length < oldText.length * 0.6)
     throw new Error(
-      "Модель существенно сократила фрагмент. Автозамена остановлена; уменьшите область правки.",
+      "Модель существенно сократила фрагмент. Исходный текст сохранён; ответ будет уточнён автоматически.",
     );
   if (
     /\[.*?(?:остальной текст|без изменений|сокращено).*?\]|(?:остальной текст|остальные разделы)\s+(?:без изменений|сохранены)/i.test(
@@ -26576,7 +26572,7 @@ function blockMD(n) {
       ),
     );
     if (!rows.length) return "";
-    const width = Math.max(...rows.map((r) => r.length));
+    const width = rows.reduce((width, row) => Math.max(width, row.length), 0);
     return rows
       .map(
         (r, i) =>
@@ -27416,7 +27412,7 @@ async function preparePrivateRequest(raw) {
   if (body.action === "plan" && body.step === 4) {
     body.model = "yandexgpt-5-lite";
     body.sourceAgentProtocol = 1;
-    body.sourceAgentRevision = "2.8.2-required-aacrhu7ck4er4221dmqt";
+    body.sourceAgentRevision = "2.8.3-required-aacrhu7ck4er4221dmqt";
     if (!p.sourceLookupApproved) {
       if (
         !confirm(
@@ -27739,7 +27735,7 @@ async function apiRequest(body, signal) {
     };
   const cacheId =
     "response:" +
-    (await digest("pipeline-2.8.2\n" + apiEndpoint() + "\n" + key));
+    (await digest("pipeline-2.8.3\n" + apiEndpoint() + "\n" + key));
   const cacheTTL =
     body.sourceAgentProtocol === 1
       ? 300000
@@ -28587,17 +28583,6 @@ async function addFiles(files) {
   const project = state;
   for (const file of files) {
     try {
-      if (state.materials.length >= 15)
-        throw new Error("Допускается до 15 материалов.");
-      if (file.size > 8 * 1024 * 1024)
-        throw new Error(file.name + ": максимум 8 МБ на материал.");
-      if (
-        state.materials.reduce((s, a) => s + a.size, 0) + file.size >
-        25 * 1024 * 1024
-      )
-        throw new Error(
-          "Суммарный размер материалов не должен превышать 25 МБ.",
-        );
       const ext = file.name.split(".").pop().toLowerCase(),
         a = {
           id: uid(),
@@ -28630,20 +28615,13 @@ async function addFiles(files) {
             raw: false,
             defval: "",
           });
-          if (rows.length > 150)
-            throw new Error(
-              "Таблица " +
-                sheet +
-                " содержит более 150 строк. Загрузите нужную выборку.",
-            );
-          if (rows.some((r) => r.length > 20))
-            throw new Error(
-              "В таблице больше 20 колонок. Загрузите нужную выборку.",
-            );
           if (!rows.length) continue;
           a.sheets.push({ name: sheet, rows });
           table += "\nЛист: " + sheet + "\n";
-          const width = Math.max(...rows.map((r) => r.length));
+          const width = rows.reduce(
+            (width, row) => Math.max(width, row.length),
+            0,
+          );
           table +=
             rows
               .map(
@@ -28669,11 +28647,6 @@ async function addFiles(files) {
           a.extracted = JSON.stringify(JSON.parse(a.extracted), null, 2);
         }
       } else throw new Error("Неподдерживаемый формат: " + ext);
-      if (a.type !== "table" && a.extracted.length > 6000)
-        throw new Error(
-          file.name +
-            ": содержимое превышает 6000 символов. Выделите нужные данные.",
-        );
       if (state !== project) return;
       await assetPut(a.id, a);
       if (state !== project) return;
@@ -28697,8 +28670,6 @@ function pdfWorkerURL() {
   return cachedPdfWorkerURL;
 }
 async function readRequirements(file) {
-  if (file.size > 10 * 1024 * 1024)
-    throw new Error("Максимальный размер требований — 10 МБ.");
   const ext = file.name.split(".").pop().toLowerCase();
   let text;
   if (ext === "txt") text = await file.text();
@@ -28716,10 +28687,6 @@ async function readRequirements(file) {
     const pdf = await pdfjsLib.getDocument({
       data: await file.arrayBuffer(),
     }).promise;
-    if (pdf.numPages > 60) {
-      await pdf.destroy();
-      throw new Error("Загрузите раздел методички до 60 страниц.");
-    }
     try {
       const pages = [];
       for (let i = 1; i <= pdf.numPages; i++) {
@@ -28737,10 +28704,6 @@ async function readRequirements(file) {
   if (!text.trim())
     throw new Error(
       "Не найден текст. Для сканированного PDF вставьте распознанные замечания вручную.",
-    );
-  if (text.length > 18000)
-    throw new Error(
-      "Требования длиннее 18000 символов. Загрузите нужный раздел или вставьте основные пункты.",
     );
   return text;
 }
@@ -28847,8 +28810,8 @@ async function auditDocx(buffer) {
 async function uploadDocx(file) {
   releaseInterrupted("Загрузка документа");
   if (!file || running || switching) return;
-  if (!/\.docx$/i.test(file.name) || file.size > 10 * 1024 * 1024) {
-    toast("Загрузите DOCX до 10 МБ.", "error");
+  if (!/\.docx$/i.test(file.name)) {
+    toast("Загрузите файл DOCX.", "error");
     return;
   }
   const project = state;
@@ -28924,24 +28887,26 @@ function captureSelection() {
     .filter((n) => range.intersectsNode(n))
     .map((n) => n.dataset.blockId);
 }
-function materialManifest() {
+function materialManifest(ids) {
   return JSON.stringify(
-    state.materials.map((a) => ({
-      id: a.id,
-      name: privacyMaterialPrivate(a) ? "Закрытый материал" : a.name,
-      type: a.type,
-      description: privacyMaterialPrivate(a)
-        ? a.publicDescription || "Закрытый материал"
-        : a.caption || "",
-      sheets: (privacyMaterialPrivate(a) ? [] : a.sheets || []).map(
-        (sheet) => ({
-          name: sheet.name,
-          columns: sheet.rows?.[0] || [],
-          rowCount: Math.max(0, (sheet.rows?.length || 0) - 1),
-        }),
-      ),
-    })),
-  ).slice(0, 8000);
+    state.materials
+      .filter((a) => !ids || ids.has(a.id))
+      .map((a) => ({
+        id: a.id,
+        name: privacyMaterialPrivate(a) ? "Закрытый материал" : a.name,
+        type: a.type,
+        description: privacyMaterialPrivate(a)
+          ? a.publicDescription || "Закрытый материал"
+          : a.caption || "",
+        sheets: (privacyMaterialPrivate(a) ? [] : a.sheets || []).map(
+          (sheet) => ({
+            name: sheet.name,
+            columns: sheet.rows?.[0] || [],
+            rowCount: Math.max(0, (sheet.rows?.length || 0) - 1),
+          }),
+        ),
+      })),
+  );
 }
 function anchoredMaterialCaption(material, proposed) {
   if (privacyMaterialPrivate(material))
@@ -28960,39 +28925,41 @@ function anchoredMaterialCaption(material, proposed) {
     return material.caption || material.name;
   return caption || material.caption || material.name;
 }
-function materialsContext() {
+function materialsContext(ids) {
   return JSON.stringify(
-    state.materials.map((a) => ({
-      id: a.id,
-      type: a.type,
-      name: privacyMaterialPrivate(a) ? "Закрытый материал" : a.name,
-      caption: privacyMaterialPrivate(a)
-        ? a.publicDescription ||
-          "Содержание скрыто. Для размещения используйте только описание автора."
-        : a.caption || "",
-      sheets: privacyMaterialPrivate(a)
-        ? undefined
-        : privacySheets(a) || undefined,
-      text:
-        privacyMaterialPrivate(a) || a.type === "image" || a.sheets?.length
+    state.materials
+      .filter((a) => !ids || ids.has(a.id))
+      .map((a) => ({
+        id: a.id,
+        type: a.type,
+        name: privacyMaterialPrivate(a) ? "Закрытый материал" : a.name,
+        caption: privacyMaterialPrivate(a)
+          ? a.publicDescription ||
+            "Содержание скрыто. Для размещения используйте только описание автора."
+          : a.caption || "",
+        sheets: privacyMaterialPrivate(a)
           ? undefined
-          : a.extracted,
-      withheldRows: (a.sheets || []).reduce(
-        (n, s) =>
-          n +
-          (s.rows || []).filter((row) =>
-            privacyMatch(row.map((v) => String(v ?? "")).join(" | ")),
-          ).length,
-        0,
-      ),
-      privacyNote:
-        "Закрытые строки не переданы; интерпретируй только видимые данные, не вычисляй и не восстанавливай скрытые значения. Служебное описание защиты относится только к comment.",
-      alreadyPlaced: Array.from(
-        editor.querySelectorAll("[data-material-id],[data-asset-id]"),
-      ).some(
-        (n) => n.dataset.materialId === a.id || n.dataset.assetId === a.id,
-      ),
-    })),
+          : privacySheets(a) || undefined,
+        text:
+          privacyMaterialPrivate(a) || a.type === "image" || a.sheets?.length
+            ? undefined
+            : a.extracted,
+        withheldRows: (a.sheets || []).reduce(
+          (n, s) =>
+            n +
+            (s.rows || []).filter((row) =>
+              privacyMatch(row.map((v) => String(v ?? "")).join(" | ")),
+            ).length,
+          0,
+        ),
+        privacyNote:
+          "Закрытые строки не переданы; интерпретируй только видимые данные, не вычисляй и не восстанавливай скрытые значения. Служебное описание защиты относится только к comment.",
+        alreadyPlaced: Array.from(
+          editor.querySelectorAll("[data-material-id],[data-asset-id]"),
+        ).some(
+          (n) => n.dataset.materialId === a.id || n.dataset.assetId === a.id,
+        ),
+      })),
   );
 }
 function progress(job, detail) {
@@ -29485,6 +29452,100 @@ function editableBlocks(step, all = documentPlan()) {
     ? available
     : all.filter((b) => !privacyExcluded(b)).slice(0, 1);
 }
+function textWindows(text, size = 3500) {
+  const parts = [];
+  const protectedValues = [
+    ...new Set([
+      ...privacyState().entities.map((e) => e.value),
+      ...VKRPrivacy.discover(text).map((e) => e.value),
+    ]),
+  ].filter(Boolean);
+  let start = 0;
+  while (start < text.length) {
+    let end = Math.min(text.length, start + size);
+    if (end < text.length) {
+      const minimum = start + Math.floor(size / 2);
+      let boundary = -1;
+      for (const match of text.slice(start, end).matchAll(/[.!?;]\s+|\n+|\s+/g))
+        if (start + match.index + match[0].length > minimum)
+          boundary = start + match.index + match[0].length;
+      if (boundary > start) end = boundary;
+      const open = text.lastIndexOf("⟦", end - 1),
+        close = text.lastIndexOf("⟧", end - 1);
+      if (open >= start && open > close) {
+        const markerEnd = text.indexOf("⟧", end);
+        if (markerEnd >= 0) end = markerEnd + 1;
+      }
+      let extended;
+      do {
+        extended = false;
+        for (const value of protectedValues) {
+          const at = text.indexOf(
+            value,
+            Math.max(start, end - value.length + 1),
+          );
+          if (at >= start && at < end && at + value.length > end) {
+            end = at + value.length;
+            extended = true;
+          }
+        }
+      } while (extended);
+      // Keep surrogate pairs intact even for an unusually long unbroken token.
+      if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end++;
+    }
+    parts.push({ start, end, text: text.slice(start, end) });
+    start = end;
+  }
+  return parts;
+}
+function requestChunks(target, edit, context = "") {
+  return groupBlocks(target).flatMap((group) => {
+    const make = (items, range) => ({
+      ids: items.map((b) => b.id),
+      ...(edit
+        ? {
+            blocks: items.map((b) => ({
+              id: b.id,
+              text: b.text,
+              type: b.node.tagName.toLowerCase(),
+              role: b.role,
+            })),
+          }
+        : {}),
+      text: items.map((b) => b.text).join("\n\n"),
+      context:
+        context ||
+        "Роли разделов: " + [...new Set(items.map((b) => b.role))].join(", "),
+      ...(range ? { range } : {}),
+    });
+    if (group.length !== 1 || group[0].text.length <= 5600)
+      return [make(group)];
+    const block = group[0],
+      parts = textWindows(block.text);
+    // Right to left: editing a later window does not shift earlier offsets.
+    if (edit) parts.reverse();
+    return parts.map((part) => ({
+      ...make(
+        [{ ...block, text: part.text }],
+        edit ? { ...part, id: block.id } : null,
+      ),
+      context:
+        (context || "") +
+        "\nЧасть единого блока, позиции " +
+        part.start +
+        "–" +
+        part.end +
+        ". Исходный блок и его оформление не разделяются. " +
+        (edit
+          ? "Верни только changes для переданной части; не добавляй начало/окончание абзаца, новые блоки, заголовки, маркеры списка или разделители Markdown. Не повторяй соседний контекст."
+          : "Это часть одного исходного блока, а не отдельный раздел.") +
+        "\nСлева (только контекст): " +
+        block.text.slice(Math.max(0, part.start - 250), part.start) +
+        "\nСправа (только контекст): " +
+        block.text.slice(part.end, part.end + 250),
+    }));
+  });
+}
 function buildAIChunks(step) {
   let target = editableBlocks(step);
   if (step !== 12 && $("scope").value === "selection" && selectedIDs.length)
@@ -29510,19 +29571,7 @@ function buildAIChunks(step) {
       },
     ];
   }
-  return groupBlocks(target).map((group) => ({
-    ids: group.map((b) => b.id),
-    blocks: group.map((b) => ({
-      id: b.id,
-      text: b.text,
-      type: b.node.tagName.toLowerCase(),
-      role: b.role,
-    })),
-    text: group.map((b) => b.text).join("\n\n"),
-    context:
-      "Подсказки роли раздела (не ограничения): " +
-      [...new Set(group.map((b) => b.role))].join(", "),
-  }));
+  return requestChunks(target, true);
 }
 function workText() {
   return blocks()
@@ -29538,6 +29587,7 @@ function workText() {
     .join("\n\n");
 }
 async function aiOverview(text, job, key, signal) {
+  text = privateWireText(text);
   if (text.length <= 22000) return "Полный текст:\n" + text;
   job.contextReads ||= {};
   const saved = (job.contextReads[key] ||= { parts: [], index: 0, texts: [] });
@@ -29630,7 +29680,7 @@ async function fitAIInput(fields, job, key, signal) {
         );
     const name = candidates.sort((a, b) => out[b].length - out[a].length)[0];
     if (!name) break;
-    const raw = out[name],
+    const raw = privateWireText(out[name]),
       parts = [];
     for (let offset = 0; offset < raw.length; offset += 18000) {
       const r = await apiRequest(
@@ -30232,6 +30282,62 @@ async function reviewSourceBatches(job, signal) {
   };
 }
 
+async function planMaterialBatches(job, signal) {
+  const saved = (job.materialPlanParts ||= {
+    index: 0,
+    placements: [],
+    comments: [],
+    warnings: [],
+  });
+  const groups = [];
+  for (let i = 0; i < state.materials.length; i += 6)
+    groups.push(state.materials.slice(i, i + 6));
+  while (saved.index < groups.length) {
+    const ids = new Set(groups[saved.index].map((a) => a.id));
+    progress(
+      job,
+      "Размещаем материалы: пакет " + (saved.index + 1) + " / " + groups.length,
+    );
+    const input = await fitAIInput(
+      {
+        context: job.overview,
+        materials: materialsContext(ids),
+        sources: job.sources || "",
+        profile: job.profile,
+      },
+      job,
+      "material-plan-" + saved.index,
+      signal,
+    );
+    const result = await apiRequest(
+      {
+        action: "plan",
+        step: 3,
+        model: job.model,
+        ...input,
+        materialManifest: materialManifest(ids),
+      },
+      signal,
+    );
+    saved.placements.push(...(result.plan.placements || []));
+    saved.comments.push(result.comment || "");
+    saved.warnings.push(...(result.warnings || []));
+    if (!result.cached) job.tokens += tokenCount(result.usage);
+    saved.index++;
+    persist();
+  }
+  return {
+    plan: {
+      placements: saved.placements,
+      focus: [],
+      sourceDecisions: [],
+      selectedSources: [],
+    },
+    comment: saved.comments.join(" "),
+    warnings: saved.warnings,
+    cached: true,
+  };
+}
 async function prepareAIStage(job, signal) {
   if (!job.overview)
     job.overview = await aiOverview(workText(), job, "work", signal);
@@ -30260,12 +30366,30 @@ async function prepareAIStage(job, signal) {
     job.sources = await aiOverview(job.sources, job, "sources", signal);
   if (job.step === 10 && !job.formatPrepared) {
     if (job.requirements.trim()) {
-      const formatting = await apiRequest(
-        { action: "format", model: job.model, text: job.requirements },
-        signal,
-      );
-      job.formatPlan = formatting.profile || {};
-      if (!formatting.cached) job.tokens += tokenCount(formatting.usage);
+      job.formatParts ||= { index: 0, profile: {} };
+      const parts = textWindows(privateWireText(job.requirements), 16000);
+      while (job.formatParts.index < parts.length) {
+        progress(
+          job,
+          "Извлекаем оформление: часть " +
+            (job.formatParts.index + 1) +
+            " / " +
+            parts.length,
+        );
+        const formatting = await apiRequest(
+          {
+            action: "format",
+            model: job.model,
+            text: parts[job.formatParts.index].text,
+          },
+          signal,
+        );
+        Object.assign(job.formatParts.profile, formatting.profile || {});
+        if (!formatting.cached) job.tokens += tokenCount(formatting.usage);
+        job.formatParts.index++;
+        persist();
+      }
+      job.formatPlan = job.formatParts.profile;
     }
     job.formatPrepared = true;
     persist();
@@ -30285,7 +30409,12 @@ async function prepareAIStage(job, signal) {
             ? "место и формулировку научной новизны"
             : "релевантные новые публикации"),
   );
-  let result = job.step === 4 ? await reviewSourceBatches(job, signal) : null;
+  let result =
+    job.step === 4
+      ? await reviewSourceBatches(job, signal)
+      : job.step === 3
+        ? await planMaterialBatches(job, signal)
+        : null;
   for (let attempt = 0; !result && attempt < 2; attempt++) {
     try {
       const input = await fitAIInput(
@@ -30382,17 +30511,11 @@ async function prepareAIStage(job, signal) {
           chosen[0].node.querySelector("img,table") ||
           chosen[0].node.tagName === "PRE")
         ? buildAIChunks(8)
-        : groupBlocks(chosen).map((group) => ({
-            ids: group.map((b) => b.id),
-            blocks: group.map((b) => ({
-              id: b.id,
-              text: b.text,
-              type: b.node.tagName.toLowerCase(),
-              role: b.role,
-            })),
-            text: group.map((b) => b.text).join("\n\n"),
-            context: "Место новизны выбрано ИИ на основании всей работы.",
-          }))
+        : requestChunks(
+            chosen,
+            true,
+            "Место новизны выбрано ИИ на основании всей работы.",
+          )
       : buildAIChunks(8);
     applied = {
       count: 0,
@@ -30620,17 +30743,13 @@ async function applyStep() {
   const originalHTML = cleanHTML(editor.innerHTML);
   const beforeVersion = snapshot("До шага " + step.id + " · " + step.label);
   if ([4, 6, 10].includes(step.id)) normaliseBibliography();
-  if (step.id !== 12) splitLongLists(step.id);
+  // Long lists, paragraphs and tables are partitioned only in transport, not in the document.
   let chunks;
   try {
     chunks = step.edit
       ? buildAIChunks(step.id)
       : $("scope").value === "all"
-        ? groupBlocks(publicAIBlocks()).map((g) => ({
-            ids: g.map((b) => b.id),
-            text: g.map((b) => b.text).join("\n\n"),
-            context: structureContext(blocks()),
-          }))
+        ? requestChunks(publicAIBlocks(), false, structureContext(blocks()))
         : [
             {
               ids: [],
@@ -30645,7 +30764,7 @@ async function applyStep() {
   state.job = {
     originalHTML,
     beforeVersion,
-    protocol: "ai-2.8.2",
+    protocol: "ai-2.8.3",
     id: uid(),
     step: step.id,
     model: $("modelSelect").value,
@@ -31215,7 +31334,6 @@ function preserveInlineText(node, freshText) {
   if (old === freshText) return false;
   const parts = Diff.diffChars(old, freshText, {
     timeout: 500,
-    maxEditLength: 7000,
   });
   if (!parts) return false;
   const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT),
@@ -31705,7 +31823,98 @@ function applyScopedPatches(chunk, result) {
     blockIDs: ids,
   };
 }
+function applyRangeChunk(chunk, result) {
+  const range = chunk.range,
+    node = Array.from(editor.children).find(
+      (n) => n.dataset.blockId === range.id,
+    );
+  const unchanged = (note) => {
+    noteFilteredResult(result, note);
+    return { changed: 0, operations: [], blockIDs: [] };
+  };
+  if (!node)
+    return unchanged(
+      "Исходный блок части изменился; оставшийся текст сохранён.",
+    );
+  const whole = blockMD(node);
+  let from = range.start;
+  if (whole.slice(from, from + range.text.length) !== range.text) {
+    from = whole.indexOf(range.text);
+    if (from < 0 || whole.indexOf(range.text, from + 1) >= 0)
+      return unchanged(
+        "Неоднозначное положение части после предыдущих правок; исходный текст сохранён.",
+      );
+  }
+  const prefix = whole.slice(0, from),
+    suffix = whole.slice(from + range.text.length);
+  let copiedContext = false;
+  const stitch = (value) => {
+    let text = String(value);
+    if (
+      text.length >= prefix.length + suffix.length &&
+      (prefix.length > 80 || suffix.length > 80) &&
+      text.startsWith(prefix) &&
+      text.endsWith(suffix)
+    )
+      text = text.slice(prefix.length, text.length - suffix.length);
+    for (const outside of [prefix.slice(-180), suffix.slice(0, 180)])
+      if (
+        outside.length > 80 &&
+        text.includes(outside) &&
+        !range.text.includes(outside)
+      )
+        copiedContext = true;
+    return (
+      prefix +
+      (range.text.match(/^\s*/)?.[0] || "") +
+      text.trim() +
+      (range.text.match(/\s*$/)?.[0] || "") +
+      suffix
+    );
+  };
+  const patches = result.patches;
+  if (patches) {
+    if (patches.insertions?.length || patches.deletions?.length)
+      noteFilteredResult(
+        result,
+        "В части длинного блока допустимы только адресные замены; структура сохранена.",
+      );
+    const changes = (patches.changes || [])
+      .filter((p) => p.id === range.id)
+      .map((p) => ({ ...p, text: stitch(p.text) }));
+    result.patches = { changes, insertions: [], deletions: [] };
+  } else result.text = stitch(result.text || range.text);
+  const proposed = patches
+    ? result.patches.changes.map((p) => p.text)
+    : [result.text];
+  if (copiedContext)
+    return unchanged(
+      "Модель повторила соседний контекст; повтор не вставлен, исходный блок сохранён.",
+    );
+
+  for (const text of proposed) {
+    const box = document.createElement("div");
+    box.innerHTML = markdownHTML(text);
+    if (
+      box.children.length !== 1 ||
+      box.firstElementChild.tagName !== node.tagName
+    )
+      return unchanged(
+        "Предложение части изменяло структуру исходного блока; текст сохранён.",
+      );
+  }
+  return applyChunk(
+    {
+      ...chunk,
+      range: null,
+      text: whole,
+      blocks: [{ ...chunk.blocks[0], text: whole }],
+    },
+    result,
+  );
+}
 function applyChunk(chunk, result) {
+  if (chunk.range) return applyRangeChunk(chunk, result);
   const nodes = chunk.ids.map((id) =>
     Array.from(editor.children).find((n) => n.dataset.blockId === id),
   );
@@ -31811,7 +32020,7 @@ function tokenCount(usage) {
 async function runJob() {
   const job = state.job;
   if (!job || running) return;
-  if (job.protocol !== "ai-2.8.2") {
+  if (job.protocol !== "ai-2.8.3") {
     state.selected = job.step;
     state.job = null;
     if ([2, 10].includes(job.step) && !state.requirements[job.step]?.text)
@@ -31877,7 +32086,7 @@ async function runJob() {
           step: job.step,
           model: job.model,
           text: c.text,
-          context: context.slice(0, 36000),
+          context,
           requirements: job.requirements,
           materials:
             job.step === 3 &&
@@ -31887,6 +32096,7 @@ async function runJob() {
           sources,
           profile: job.profile,
           partial: !step.edit && job.chunks.length > 1,
+          partialBlock: Boolean(c.range),
           ...(step.edit && c.blocks
             ? { responseFormat: "patches-v1", blocks: c.blocks }
             : {}),
@@ -31915,20 +32125,40 @@ async function runJob() {
             "EMPTY_RESULT",
             "EMPTY_TEXT",
           ].includes(e.code) &&
-          c.blocks?.length > 1 &&
-          (c.recoveryDepth || 0) < 2 &&
-          (job.recoveries || 0) < 4
+          step.edit &&
+          c.blocks?.length &&
+          (c.blocks.length > 1 || c.text.length > 600)
         ) {
-          const middle = Math.ceil(c.blocks.length / 2);
-          const parts = [c.blocks.slice(0, middle), c.blocks.slice(middle)].map(
-            (part) => ({
-              ...c,
-              blocks: part,
-              ids: part.map((b) => b.id),
-              text: part.map((b) => b.text).join("\n\n"),
-              recoveryDepth: (c.recoveryDepth || 0) + 1,
-            }),
-          );
+          const parts =
+            c.blocks.length > 1
+              ? (() => {
+                  const middle = Math.ceil(c.blocks.length / 2);
+                  return [
+                    c.blocks.slice(0, middle),
+                    c.blocks.slice(middle),
+                  ].map((part) => ({
+                    ...c,
+                    blocks: part,
+                    ids: part.map((b) => b.id),
+                    text: part.map((b) => b.text).join("\n\n"),
+                  }));
+                })()
+              : textWindows(c.text, Math.ceil(c.text.length / 2))
+                  .reverse()
+                  .map((part) => ({
+                    ...c,
+                    text: part.text,
+                    blocks: [{ ...c.blocks[0], text: part.text }],
+                    range: {
+                      ...part,
+                      start: (c.range?.start || 0) + part.start,
+                      end: (c.range?.start || 0) + part.end,
+                      id: c.ids[0],
+                    },
+                    context:
+                      c.context +
+                      "\nАвтоматическое уточнение меньшего участка: верни только changes, без новых блоков.",
+                  }));
           job.chunks.splice(job.index, 1, ...parts);
           job.recoveries = (job.recoveries || 0) + 1;
           progress(
@@ -31975,28 +32205,29 @@ async function runJob() {
           );
           if (current.length) {
             progress(job, "Уточняем привязку неприменённых правок…");
-            const retryChunk = {
-              ...c,
-              ids: current.map((b) => b.id),
-              blocks: current.map((b) => ({
-                id: b.id,
-                text: b.text,
-                type: b.node.tagName.toLowerCase(),
-                role: b.role,
-              })),
-              text: current.map((b) => b.text).join("\n\n"),
-            };
+            const retryChunk = c.range
+              ? c
+              : {
+                  ...c,
+                  ids: current.map((b) => b.id),
+                  blocks: current.map((b) => ({
+                    id: b.id,
+                    text: b.text,
+                    type: b.node.tagName.toLowerCase(),
+                    role: b.role,
+                  })),
+                  text: current.map((b) => b.text).join("\n\n"),
+                };
             try {
               const input = await fitAIInput(
                 {
                   text: retryChunk.text,
-                  context: context.slice(0, 24000),
-                  requirements: (
+                  context,
+                  requirements:
                     job.requirements +
                     "\nИсправь предыдущий ответ: " +
                     (result.warnings || []).join("; ") +
-                    ". Укажи точные b1,b2 из blocks. Не меняй эмпирические значения; исправляй текст вокруг них. Верни изменения только в доступные блоки."
-                  ).slice(0, 18000),
+                    ". Укажи точные b1,b2 из blocks. Не меняй эмпирические значения; исправляй текст вокруг них. Верни изменения только в доступные блоки.",
                   sources,
                   profile: job.profile,
                   materials: job.step === 3 ? job.materialContext || "" : "",
@@ -32011,6 +32242,7 @@ async function runJob() {
                   step: job.step,
                   model: job.model,
                   responseFormat: "patches-v1",
+                  partialBlock: Boolean(retryChunk.range),
                   blocks: retryChunk.blocks,
                   ...input,
                 },
@@ -32233,11 +32465,9 @@ async function synthesizeInfo(job, signal) {
     const groups = [];
     let group = [],
       len = 0;
-    for (const entry of entries) {
-      if (entry.length > 18000)
-        throw new Error(
-          "Промежуточный анализ слишком длинный. Уменьшите область анализа.",
-        );
+    for (const entry of entries.flatMap((value) =>
+      textWindows(privateWireText(value), 16000).map((part) => part.text),
+    )) {
       if (group.length && len + entry.length + 2 > 18000) {
         groups.push(group.join("\n\n"));
         group = [];
@@ -33229,6 +33459,32 @@ function exportFragments(n) {
     });
   return [n.cloneNode(true)];
 }
+function printSliceHeight(page, offset, maximum) {
+  const remaining = page.scrollHeight - offset;
+  if (remaining <= maximum) return remaining;
+  const origin = page.getBoundingClientRect().top,
+    limit = offset + maximum;
+  const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT),
+    lines = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (!node.textContent.trim()) continue;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    for (const rect of range.getClientRects()) {
+      const top = rect.top - origin,
+        bottom = rect.bottom - origin;
+      if (bottom > limit - 80 && top < limit + 1) lines.push({ top, bottom });
+    }
+  }
+  const choices = [...new Set(lines.map((r) => Math.ceil(r.bottom)))].filter(
+    (y) =>
+      y > limit - 80 &&
+      y <= limit &&
+      !lines.some((r) => r.top < y - 0.1 && r.bottom > y + 0.1),
+  );
+  return choices.length ? Math.max(...choices) - offset : maximum;
+}
 async function exportPDF() {
   assignBlocks();
   let host;
@@ -33263,10 +33519,6 @@ async function exportPDF() {
         tableNode.remove();
         if (current.childNodes.length) next();
         current.append(tableNode);
-        if (current.scrollHeight > maxHeight)
-          throw new Error(
-            "Большая таблица с объединёнными строками: экспортируйте DOCX для сохранения макета.",
-          );
         return;
       }
       const rows = Array.from(tableNode.rows);
@@ -33296,10 +33548,12 @@ async function exportPDF() {
           current.append(table);
         }
         table.append(cloned);
-        if (current.scrollHeight > maxHeight)
-          throw new Error(
-            "Строка таблицы превышает высоту страницы. Скачайте DOCX или разделите строку.",
-          );
+        if (current.scrollHeight > maxHeight && row !== rows.at(-1)) {
+          next();
+          table = tableNode.cloneNode(false);
+          table.append(header.cloneNode(true));
+          current.append(table);
+        }
       }
     };
     for (const original of editor.children)
@@ -33323,39 +33577,55 @@ async function exportPDF() {
         fragment.remove();
         if (current.childNodes.length) next();
         current.append(fragment);
-        if (current.scrollHeight > maxHeight)
-          throw new Error(
-            "Один абзац, рисунок или строка таблицы не помещается на страницу PDF. Разделите его или скачайте DOCX.",
-          );
+        // A tall paragraph/image is captured through bounded page-height viewports below.
       }
-    let pdf = null;
+    let pdf = null,
+      rendered = 0;
     for (let i = 0; i < pages.length; i++) {
-      toast("Экспорт PDF: страница " + (i + 1) + " / " + pages.length);
-      const worker = html2pdf()
-        .set({
-          margin: [profile.top, profile.right, profile.bottom, profile.left],
-          image: { type: "jpeg", quality: 0.94 },
-          html2canvas: { scale: 1.5, backgroundColor: "#ffffff" },
-          jsPDF: { unit: "mm", format: "a4" },
-        })
-        .from(pages[i]);
-      if (!pdf) {
-        await worker.toPdf();
-        pdf = await worker.get("pdf");
-      } else {
-        await worker.toCanvas();
-        const canvas = await worker.get("canvas");
-        pdf.addPage();
-        pdf.addImage(
-          canvas.toDataURL("image/jpeg", 0.94),
-          "JPEG",
-          profile.left,
-          profile.top,
-          width,
-          Math.min(height, (canvas.height / canvas.width) * width),
-        );
-        canvas.width = 1;
-        canvas.height = 1;
+      if (!pages[i].childNodes.length) continue;
+      const fullHeight = pages[i].scrollHeight;
+      for (let offset = 0; offset < fullHeight;) {
+        const captureHeight = printSliceHeight(pages[i], offset, maxHeight - 2);
+        const viewport = document.createElement("div"),
+          copy = pages[i].cloneNode(true);
+        viewport.style.cssText =
+          "width:" +
+          width +
+          "mm;height:" +
+          captureHeight +
+          "px;overflow:hidden;background:white;position:relative;";
+        copy.style.transform = "translateY(-" + offset + "px)";
+        viewport.append(copy);
+        host.append(viewport);
+        toast("Экспорт PDF: страница " + ++rendered);
+        const worker = html2pdf()
+          .set({
+            margin: [profile.top, profile.right, profile.bottom, profile.left],
+            image: { type: "jpeg", quality: 0.94 },
+            html2canvas: { scale: 1.5, backgroundColor: "#ffffff" },
+            jsPDF: { unit: "mm", format: "a4" },
+          })
+          .from(viewport);
+        if (!pdf) {
+          await worker.toPdf();
+          pdf = await worker.get("pdf");
+        } else {
+          await worker.toCanvas();
+          const canvas = await worker.get("canvas");
+          pdf.addPage();
+          pdf.addImage(
+            canvas.toDataURL("image/jpeg", 0.94),
+            "JPEG",
+            profile.left,
+            profile.top,
+            width,
+            Math.min(height, (canvas.height / canvas.width) * width),
+          );
+          canvas.width = 1;
+          canvas.height = 1;
+        }
+        viewport.remove();
+        offset += captureHeight;
       }
     }
     for (let page = 2; page <= pdf.getNumberOfPages(); page++) {
